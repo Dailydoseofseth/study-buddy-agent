@@ -69,7 +69,10 @@ current_question = None
 # are — tracked here (not left to the model's memory) so Python itself can
 # render "Question 2 of 3" and detect quiz-complete, which is what lets the
 # agent loop skip asking the model to phrase that text on every turn.
-quiz_state = {"num_questions": 0, "question_num": 0}
+# start_correct/start_incorrect snapshot the lifetime score at quiz start, so
+# quiz_complete can report this quiz's own tally (a delta) instead of the
+# running lifetime total, which would include points from earlier quizzes.
+quiz_state = {"num_questions": 0, "question_num": 0, "start_correct": 0, "start_incorrect": 0}
 
 
 def _draw_next_card(topic_key: str) -> str:
@@ -97,6 +100,8 @@ def get_flashcard(topic: str, num_questions: int = 3) -> dict:
 
     quiz_state["num_questions"] = max(1, num_questions)
     quiz_state["question_num"] = 1
+    quiz_state["start_correct"] = score["correct"]
+    quiz_state["start_incorrect"] = score["incorrect"]
     return {
         "question": _draw_next_card(topic_key),
         "question_num": quiz_state["question_num"],
@@ -153,8 +158,16 @@ def check_answer_and_next(user_answer: str) -> dict:
     quiz_state["question_num"] += 1
     if quiz_state["question_num"] > quiz_state["num_questions"]:
         # Quiz done — don't draw a card that will never be shown.
+        # Report this quiz's own tally (a delta off the start-of-quiz
+        # snapshot), not the lifetime session total from get_score().
+        quiz_correct = score["correct"] - quiz_state["start_correct"]
+        quiz_incorrect = score["incorrect"] - quiz_state["start_incorrect"]
         result["quiz_complete"] = True
-        result["final_score"] = get_score()
+        result["final_score"] = {
+            "correct": quiz_correct,
+            "incorrect": quiz_incorrect,
+            "total": quiz_correct + quiz_incorrect,
+        }
     else:
         result["next_question"] = _draw_next_card(topic_key)
         result["question_num"] = quiz_state["question_num"]
