@@ -18,7 +18,30 @@ from google import genai
 
 load_dotenv()
 
-MODEL = "gemini-3.6-flash"
+# Tried in order. gemini-3.6-flash is preferred; gemini-3.1-flash-lite has its
+# own separate free-tier quota bucket, so it's a real fallback (not just a
+# retry) once the primary model's quota is actually exhausted for the day —
+# not a transient per-minute rate limit, which the retry loop already handles.
+MODEL_CHAIN = ["gemini-3.6-flash", "gemini-3.1-flash-lite"]
+_active_model_index = 0
+
+
+def _current_model() -> str:
+    return MODEL_CHAIN[_active_model_index]
+
+
+def _advance_to_next_model() -> bool:
+    """Move to the next model in MODEL_CHAIN after the current one's quota is
+    exhausted. Returns False if there's no fallback left to try. Clears the
+    request-timestamp pacer since RPM limits are tracked per-model too — the
+    fresh model hasn't made any requests yet."""
+    global _active_model_index
+    if _active_model_index + 1 >= len(MODEL_CHAIN):
+        return False
+    _active_model_index += 1
+    _request_timestamps.clear()
+    print(f"  {MODEL_CHAIN[_active_model_index - 1]}'s quota is exhausted — falling back to {MODEL_CHAIN[_active_model_index]}.")
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -30,53 +53,53 @@ MODEL = "gemini-3.6-flash"
 FLASHCARDS = {
     "js syntax": {
         "easy": [
-            {"question": "What keyword declares a block-scoped variable that can be reassigned?", "answer": "let", "hint": "Reassignable, block-scoped — introduced in ES6 alongside const."},
-            {"question": "What keyword declares a variable that cannot be reassigned?", "answer": "const", "hint": "Block-scoped like let, but the binding can't be reassigned."},
-            {"question": "What operator returns a string naming a value's type?", "answer": "typeof", "hint": "Try it in a console: typeof 42 tells you the type as a string."},
+            {"question": "What keyword declares a block-scoped variable that can be reassigned?", "answer": "let", "hint": "Reassignable, block-scoped — introduced in ES6 alongside const.", "emoji": "♻️"},
+            {"question": "What keyword declares a variable that cannot be reassigned?", "answer": "const", "hint": "Block-scoped like let, but the binding can't be reassigned.", "emoji": "🔒"},
+            {"question": "What operator returns a string naming a value's type?", "answer": "typeof", "hint": "Try it in a console: typeof 42 tells you the type as a string.", "emoji": "🏷️"},
         ],
         "medium": [
-            {"question": "What array method creates a new array by transforming every element?", "answer": "map", "hint": "Returns a brand-new array — the original is left untouched."},
-            {"question": "What operator checks equality without type coercion?", "answer": "===", "hint": "Compares both value and type — no coercion allowed."},
-            {"question": "What array method returns a new array containing only elements that pass a test?", "answer": "filter", "hint": "Pairs naturally with map — this one removes, map transforms."},
+            {"question": "What array method creates a new array by transforming every element?", "answer": "map", "hint": "Returns a brand-new array — the original is left untouched.", "emoji": "🗺️"},
+            {"question": "What operator checks equality without type coercion?", "answer": "===", "hint": "Compares both value and type — no coercion allowed.", "emoji": "⚖️"},
+            {"question": "What array method returns a new array containing only elements that pass a test?", "answer": "filter", "hint": "Pairs naturally with map — this one removes, map transforms.", "emoji": "🧺"},
         ],
         "hard": [
-            {"question": "What symbol wraps a template literal string?", "answer": "`", "hint": "Lets you embed ${expressions} directly inside a string."},
-            {"question": "What do you call a function that remembers variables from its enclosing scope even after that scope has finished executing?", "answer": "closure", "hint": "This is why a counter function can keep incrementing a private variable between calls."},
-            {"question": "What JavaScript behavior moves variable and function declarations to the top of their scope before code runs?", "answer": "hoisting", "hint": "This is why you can call a function before its declaration appears in the file."},
+            {"question": "What symbol wraps a template literal string?", "answer": "`", "hint": "Lets you embed ${expressions} directly inside a string.", "emoji": "🧵"},
+            {"question": "What do you call a function that remembers variables from its enclosing scope even after that scope has finished executing?", "answer": "closure", "hint": "This is why a counter function can keep incrementing a private variable between calls.", "emoji": "🔐"},
+            {"question": "What JavaScript behavior moves variable and function declarations to the top of their scope before code runs?", "answer": "hoisting", "hint": "This is why you can call a function before its declaration appears in the file.", "emoji": "🎈"},
         ],
     },
     "bugs": {
         "easy": [
-            {"question": "How many legs does an insect have?", "answer": "6", "hint": "Count the legs on a housefly or an ant — that's the number."},
-            {"question": "How many wings does a typical housefly have?", "answer": "2", "hint": "Flies belong to the order Diptera — 'di-' means two."},
-            {"question": "What do you call a butterfly in its larval stage?", "answer": "caterpillar", "hint": "This is what a butterfly looks like before it grows wings."},
+            {"question": "How many legs does an insect have?", "answer": "6", "hint": "Count the legs on a housefly or an ant — that's the number.", "emoji": "🐜"},
+            {"question": "How many wings does a typical housefly have?", "answer": "2", "hint": "Flies belong to the order Diptera — 'di-' means two.", "emoji": "🪰", "image_url": "/images/bugs/housefly.jpg"},
+            {"question": "What do you call a butterfly in its larval stage?", "answer": "caterpillar", "hint": "This is what a butterfly looks like before it grows wings.", "emoji": "🐛"},
         ],
         "medium": [
-            {"question": "What is the largest order of insects, containing beetles?", "answer": "Coleoptera", "hint": "This order includes ladybugs and fireflies — both beetles."},
-            {"question": "What is the term for the transformation an insect undergoes from larva to adult?", "answer": "metamorphosis", "hint": "Butterflies undergo a 'complete' one; grasshoppers undergo an 'incomplete' one."},
-            {"question": "What is the hard external covering that supports and protects an insect's body called?", "answer": "exoskeleton", "hint": "Insects wear their support structure on the outside, not the inside."},
+            {"question": "What is the largest order of insects, containing beetles?", "answer": "Coleoptera", "hint": "This order includes ladybugs and fireflies — both beetles.", "emoji": "🐞"},
+            {"question": "What is the term for the transformation an insect undergoes from larva to adult?", "answer": "metamorphosis", "hint": "Butterflies undergo a 'complete' one; grasshoppers undergo an 'incomplete' one.", "emoji": "🦋"},
+            {"question": "What is the hard external covering that supports and protects an insect's body called?", "answer": "exoskeleton", "hint": "Insects wear their support structure on the outside, not the inside.", "emoji": "🪲"},
         ],
         "hard": [
-            {"question": "What is the scientific study of insects called?", "answer": "entomology", "hint": "The prefix 'ento-' comes from Greek for 'insect'."},
-            {"question": "What is the scientific order name for butterflies and moths?", "answer": "Lepidoptera", "hint": "This Greek-derived name literally means 'scale wing'."},
-            {"question": "What is the middle body segment of an insect called, the one bearing legs and wings?", "answer": "thorax", "hint": "An insect's body has 3 segments: head, this one, and the abdomen."},
+            {"question": "What is the scientific study of insects called?", "answer": "entomology", "hint": "The prefix 'ento-' comes from Greek for 'insect'.", "emoji": "🔬", "image_url": "/images/bugs/entomology.jpg"},
+            {"question": "What is the scientific order name for butterflies and moths?", "answer": "Lepidoptera", "hint": "This Greek-derived name literally means 'scale wing'.", "emoji": "🦋"},
+            {"question": "What is the middle body segment of an insect called, the one bearing legs and wings?", "answer": "thorax", "hint": "An insect's body has 3 segments: head, this one, and the abdomen.", "emoji": "🐝"},
         ],
     },
     "debugs": {
         "easy": [
-            {"question": "What is the common term for pausing code execution at a specific line to inspect state?", "answer": "breakpoint", "hint": "You set this in your IDE to pause execution mid-run."},
-            {"question": "What tool lets you step through code line-by-line to inspect variables?", "answer": "debugger", "hint": "Chrome DevTools has a panel named exactly this."},
-            {"question": "What is the process of finding and fixing bugs in code called?", "answer": "debugging", "hint": "It's literally the '-ing' form of removing bugs from code."},
+            {"question": "What is the common term for pausing code execution at a specific line to inspect state?", "answer": "breakpoint", "hint": "You set this in your IDE to pause execution mid-run.", "emoji": "⏸️"},
+            {"question": "What tool lets you step through code line-by-line to inspect variables?", "answer": "debugger", "hint": "Chrome DevTools has a panel named exactly this.", "emoji": "🔧"},
+            {"question": "What is the process of finding and fixing bugs in code called?", "answer": "debugging", "hint": "It's literally the '-ing' form of removing bugs from code.", "emoji": "🩹"},
         ],
         "medium": [
-            {"question": "What do you call an error that occurs while the program is running, not at compile time?", "answer": "runtime error", "hint": "Contrast this with a 'syntax error', which happens before the code even runs."},
-            {"question": "What browser feature lets you inspect the DOM and console errors?", "answer": "DevTools", "hint": "Right-click any webpage and choose 'Inspect' to open this."},
-            {"question": "What do you call the ordered list of function calls shown when an error is thrown, tracing back to where it started?", "answer": "stack trace", "hint": "This is what gets printed below an uncaught exception in the console."},
+            {"question": "What do you call an error that occurs while the program is running, not at compile time?", "answer": "runtime error", "hint": "Contrast this with a 'syntax error', which happens before the code even runs.", "emoji": "💥"},
+            {"question": "What browser feature lets you inspect the DOM and console errors?", "answer": "DevTools", "hint": "Right-click any webpage and choose 'Inspect' to open this.", "emoji": "🧰"},
+            {"question": "What do you call the ordered list of function calls shown when an error is thrown, tracing back to where it started?", "answer": "stack trace", "hint": "This is what gets printed below an uncaught exception in the console.", "emoji": "📚"},
         ],
         "hard": [
-            {"question": "What term describes a bug that disappears or changes behavior when you try to observe it, like adding a console.log makes it go away?", "answer": "heisenbug", "hint": "Named after the physicist behind the uncertainty principle — observing it changes it."},
-            {"question": "What is the term for a bug caused by incorrect assumptions about the order of asynchronous operations?", "answer": "race condition", "hint": "Two async calls updating the same variable can produce different results depending on which finishes first."},
-            {"question": "What is the general term for a bug that only occurs intermittently, making it hard to reproduce consistently?", "answer": "flaky", "hint": "Testers use this word for a test that passes sometimes and fails other times with no code changes."},
+            {"question": "What term describes a bug that disappears or changes behavior when you try to observe it, like adding a console.log makes it go away?", "answer": "heisenbug", "hint": "Named after the physicist behind the uncertainty principle — observing it changes it.", "emoji": "👻"},
+            {"question": "What is the term for a bug caused by incorrect assumptions about the order of asynchronous operations?", "answer": "race condition", "hint": "Two async calls updating the same variable can produce different results depending on which finishes first.", "emoji": "🏁"},
+            {"question": "What is the general term for a bug that only occurs intermittently, making it hard to reproduce consistently?", "answer": "flaky", "hint": "Testers use this word for a test that passes sometimes and fails other times with no code changes.", "emoji": "🎲"},
         ],
     },
 }
@@ -407,6 +430,19 @@ def get_current_choices() -> list | None:
     return current_question.get("choices") if current_question else None
 
 
+def get_current_visual() -> dict | None:
+    """Return the visual for whichever flashcard question is currently
+    active: a real photo (image_url) where one exists (the bugs deck), or
+    an emoji glyph as the fallback/default for every other card. None if
+    there's no active question. Same no-extra-API-call side channel as hint."""
+    if not current_question:
+        return None
+    return {
+        "emoji": current_question.get("emoji"),
+        "image_url": current_question.get("image_url"),
+    }
+
+
 def get_last_answer_correct() -> bool | None:
     """Consume (return-then-clear) whether the most recently graded answer
     was correct. Returns None on any turn that didn't just grade an answer,
@@ -586,6 +622,17 @@ def _is_rate_limit_error(exc: Exception) -> bool:
     return "429" in text or "RESOURCE_EXHAUSTED" in text or "quota" in text.lower()
 
 
+def _is_quota_exhausted_error(exc: Exception) -> bool:
+    """Detect a persistent daily-quota exhaustion (as opposed to a transient
+    per-minute burst) from the error text — e.g. "generate_content_free_tier_
+    requests" or "plan and billing". This kind of 429 includes a "retry in
+    Ns" hint too, but it's misleading: the real reset is midnight Pacific, so
+    waiting out that hint and retrying the same model is pointless. Falling
+    back to the next model immediately is faster and actually works."""
+    text = str(exc).lower()
+    return "free_tier_requests" in text or "plan and billing" in text
+
+
 def _rate_limit_wait_seconds(exc: Exception, attempt: int) -> float:
     """Parse the "Please retry in N.NNs" hint out of the error message, adding
     a small buffer. Falls back to a fixed backoff schedule if no hint is found."""
@@ -662,27 +709,41 @@ def run_agent_turn(client, history: list, max_steps: int = 12) -> str:
     place so the conversation (and the quiz) carries over to the next turn."""
     for step_num in range(1, max_steps + 1):
         # --- REASON ----------------------------------------------------
-        for attempt in range(1, MAX_RATE_LIMIT_RETRIES + 1):
-            _throttle_before_request()
-            try:
-                interaction = client.interactions.create(
-                    model=MODEL,
-                    store=False,
-                    input=history,
-                    tools=TOOL_DECLARATIONS,
-                )
-                break
-            except Exception as exc:
-                # Caught broadly because this SDK raises rate-limit errors from
-                # an internal, undocumented class hierarchy that isn't a
-                # subclass of anything public — see _is_rate_limit_error.
-                # Anything that isn't actually a rate limit is re-raised
-                # immediately below, so this doesn't swallow real bugs.
-                if not _is_rate_limit_error(exc) or attempt == MAX_RATE_LIMIT_RETRIES:
-                    raise
-                wait_time = _rate_limit_wait_seconds(exc, attempt)
-                print(f"  [step {step_num}] rate limited — retrying in {wait_time:.0f}s...")
-                time.sleep(wait_time)
+        interaction = None
+        while interaction is None:
+            model = _current_model()
+            for attempt in range(1, MAX_RATE_LIMIT_RETRIES + 1):
+                _throttle_before_request()
+                try:
+                    interaction = client.interactions.create(
+                        model=model,
+                        store=False,
+                        input=history,
+                        tools=TOOL_DECLARATIONS,
+                    )
+                    break
+                except Exception as exc:
+                    # Caught broadly because this SDK raises rate-limit errors from
+                    # an internal, undocumented class hierarchy that isn't a
+                    # subclass of anything public — see _is_rate_limit_error.
+                    # Anything that isn't actually a rate limit is re-raised
+                    # immediately below, so this doesn't swallow real bugs.
+                    if _is_quota_exhausted_error(exc):
+                        # A daily-quota 429 won't clear by waiting out its
+                        # (misleading) "retry in Ns" hint, so skip straight
+                        # to the next model instead of burning retries here.
+                        if not _advance_to_next_model():
+                            raise
+                        break
+                    if not _is_rate_limit_error(exc):
+                        raise
+                    if attempt == MAX_RATE_LIMIT_RETRIES:
+                        if not _advance_to_next_model():
+                            raise
+                        break
+                    wait_time = _rate_limit_wait_seconds(exc, attempt)
+                    print(f"  [step {step_num}] {model} rate limited — retrying in {wait_time:.0f}s...")
+                    time.sleep(wait_time)
 
         for step in interaction.steps:
             history.append(step.model_dump())

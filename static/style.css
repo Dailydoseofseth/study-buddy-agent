@@ -203,6 +203,33 @@ html, body {
   max-width: 100%;
 }
 
+/* ---------- Question visual (photo or emoji) ---------- */
+
+.visual-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--cyan);
+  border-radius: 2px;
+  background: rgba(5, 244, 224, 0.06);
+  box-shadow: 0 0 10px rgba(5, 244, 224, 0.35);
+}
+
+.visual-card img {
+  display: block;
+  width: 100%;
+  max-height: 180px;
+  object-fit: cover;
+}
+
+.visual-emoji {
+  font-size: 3.5rem;
+  line-height: 1;
+  padding: 20px 0;
+}
+
 .hint-group {
   display: flex;
   flex-direction: column;

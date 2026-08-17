@@ -21,6 +21,7 @@ from study_buddy_agent import (
     get_current_hint,
     get_current_choices,
     get_last_answer_correct,
+    get_current_visual,
 )
 
 app = Flask(__name__, static_folder="static", static_url_path="")
@@ -52,7 +53,10 @@ def chat():
     hint = get_current_hint()
     choices = get_current_choices()
     correct = get_last_answer_correct()
-    return jsonify({"reply": reply, "score": score, "hint": hint, "choices": choices, "correct": correct})
+    visual = get_current_visual()
+    return jsonify(
+        {"reply": reply, "score": score, "hint": hint, "choices": choices, "correct": correct, "visual": visual}
+    )
 
 
 if __name__ == "__main__":

@@ -98,12 +98,16 @@
     scrollToBottom();
   }
 
-  function appendAgentMessage(text, hint, choices) {
+  function appendAgentMessage(text, hint, choices, visual) {
     var row = document.createElement("div");
     row.className = "message agent";
 
     var wrap = document.createElement("div");
     wrap.className = "agent-wrap";
+
+    if (visual && (visual.image_url || visual.emoji)) {
+      wrap.appendChild(buildVisualCard(visual));
+    }
 
     var bubble = document.createElement("div");
     bubble.className = "bubble";
@@ -121,6 +125,38 @@
     row.appendChild(wrap);
     chatLog.appendChild(row);
     scrollToBottom();
+  }
+
+  function buildVisualCard(visual) {
+    var card = document.createElement("div");
+    card.className = "visual-card";
+
+    if (visual.image_url) {
+      var img = document.createElement("img");
+      img.src = visual.image_url;
+      img.alt = "";
+      img.addEventListener("error", function () {
+        // Broken/unreachable photo — degrade to the emoji instead of a broken-image icon.
+        card.innerHTML = "";
+        if (visual.emoji) {
+          card.appendChild(buildVisualEmoji(visual.emoji));
+        } else {
+          card.remove();
+        }
+      });
+      card.appendChild(img);
+    } else {
+      card.appendChild(buildVisualEmoji(visual.emoji));
+    }
+
+    return card;
+  }
+
+  function buildVisualEmoji(emoji) {
+    var span = document.createElement("span");
+    span.className = "visual-emoji";
+    span.textContent = emoji;
+    return span;
   }
 
   function buildChoiceButtons(choices) {
@@ -244,7 +280,7 @@
       .then(function (result) {
         removeLoadingIndicator();
         if (result.ok && result.data && typeof result.data.reply === "string") {
-          appendAgentMessage(result.data.reply, result.data.hint, result.data.choices);
+          appendAgentMessage(result.data.reply, result.data.hint, result.data.choices, result.data.visual);
           updateScore(result.data.score);
           if (result.data.correct === true) {
             playCorrectSound();
