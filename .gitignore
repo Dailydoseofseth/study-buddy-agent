@@ -2,4 +2,4 @@
 venv/
 __pycache__/
 *.pyc
-custom_flashcards.json
+study_buddy.db

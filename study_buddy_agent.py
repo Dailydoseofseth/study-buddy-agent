@@ -10,6 +10,7 @@ import json
 import os
 import random
 import re
+import sqlite3
 import time
 from collections import deque
 
@@ -109,31 +110,89 @@ DIFFICULTIES = ("easy", "medium", "hard")
 # Special topic keys that draw from every real topic combined, instead of one deck.
 MIXED_TOPIC_KEYS = ("mixed", "all")
 
-# User-authored cards persist here across restarts, merged into FLASHCARDS
-# at import time so they're indistinguishable from the built-in deck once loaded.
-CUSTOM_CARDS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "custom_flashcards.json")
+# Score, per-topic stats, and user-authored cards all persist in this SQLite
+# file, so they survive process restarts instead of resetting every time the
+# server is relaunched (a plain in-memory dict, as this used to be).
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "study_buddy.db")
+
+
+def _get_db() -> sqlite3.Connection:
+    """Open a short-lived connection, creating tables on first use. Opening
+    fresh per call (rather than holding one connection open) sidesteps any
+    thread-safety questions and keeps this simple for an app this size."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS score ("
+        "id INTEGER PRIMARY KEY CHECK (id = 1), correct INTEGER NOT NULL, incorrect INTEGER NOT NULL)"
+    )
+    conn.execute("INSERT OR IGNORE INTO score (id, correct, incorrect) VALUES (1, 0, 0)")
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS topic_stats ("
+        "topic TEXT PRIMARY KEY, correct INTEGER NOT NULL, incorrect INTEGER NOT NULL)"
+    )
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS custom_flashcards ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, topic TEXT NOT NULL, difficulty TEXT NOT NULL, "
+        "question TEXT NOT NULL, answer TEXT NOT NULL, hint TEXT NOT NULL)"
+    )
+    conn.commit()
+    return conn
+
+
+def _load_score() -> dict:
+    with _get_db() as conn:
+        row = conn.execute("SELECT correct, incorrect FROM score WHERE id = 1").fetchone()
+    return {"correct": row[0], "incorrect": row[1]}
+
+
+def _persist_score() -> None:
+    with _get_db() as conn:
+        conn.execute(
+            "UPDATE score SET correct = ?, incorrect = ? WHERE id = 1", (score["correct"], score["incorrect"])
+        )
+
+
+def _load_topic_stats() -> dict:
+    with _get_db() as conn:
+        rows = conn.execute("SELECT topic, correct, incorrect FROM topic_stats").fetchall()
+    return {topic: {"correct": c, "incorrect": i} for topic, c, i in rows}
+
+
+def _persist_topic_stat(topic_key: str) -> None:
+    tally = topic_stats[topic_key]
+    with _get_db() as conn:
+        conn.execute(
+            "INSERT INTO topic_stats (topic, correct, incorrect) VALUES (?, ?, ?) "
+            "ON CONFLICT(topic) DO UPDATE SET correct = excluded.correct, incorrect = excluded.incorrect",
+            (topic_key, tally["correct"], tally["incorrect"]),
+        )
 
 
 def _load_custom_cards() -> None:
-    if not os.path.exists(CUSTOM_CARDS_PATH):
-        return
-    with open(CUSTOM_CARDS_PATH) as f:
-        saved = json.load(f)
-    for topic_key, tiers in saved.items():
+    """Merge user-authored cards from the DB into FLASHCARDS at import time,
+    so they're indistinguishable from the built-in deck once loaded."""
+    with _get_db() as conn:
+        rows = conn.execute("SELECT topic, difficulty, question, answer, hint FROM custom_flashcards").fetchall()
+    for topic_key, difficulty_key, question, answer, hint in rows:
         deck = FLASHCARDS.setdefault(topic_key, {tier: [] for tier in DIFFICULTIES})
-        for tier, cards in tiers.items():
-            deck.setdefault(tier, []).extend(cards)
+        deck.setdefault(difficulty_key, []).append({"question": question, "answer": answer, "hint": hint})
+
+
+def _persist_custom_card(topic_key: str, difficulty_key: str, card: dict) -> None:
+    with _get_db() as conn:
+        conn.execute(
+            "INSERT INTO custom_flashcards (topic, difficulty, question, answer, hint) VALUES (?, ?, ?, ?, ?)",
+            (topic_key, difficulty_key, card["question"], card["answer"], card["hint"]),
+        )
 
 
 _load_custom_cards()
 
-# Stretch goal: score persists across the conversation for as long as this
-# process keeps running (a plain global dict the tool functions update).
-score = {"correct": 0, "incorrect": 0}
-
-# Per-topic correct/incorrect counts, used to auto-pick a difficulty tier
-# (see _suggest_difficulty) when the user starts a quiz without naming one.
-topic_stats = {}
+# Loaded from the DB at import time, then kept in sync on every write via
+# _persist_score/_persist_topic_stat — the in-memory dicts are the fast path
+# tool functions read/mutate, the DB is what makes that state outlive a restart.
+score = _load_score()
+topic_stats = _load_topic_stats()
 
 # Per-topic shuffled draw piles, so a quiz session works through every card
 # in a topic before any repeat. Refilled and reshuffled once exhausted.
@@ -288,16 +347,6 @@ def add_flashcard(topic: str, question: str, answer: str, hint: str = "", diffic
     return {"added": True, "topic": topic_key, "difficulty": difficulty_key, "question": card["question"]}
 
 
-def _persist_custom_card(topic_key: str, difficulty_key: str, card: dict) -> None:
-    saved = {}
-    if os.path.exists(CUSTOM_CARDS_PATH):
-        with open(CUSTOM_CARDS_PATH) as f:
-            saved = json.load(f)
-    saved.setdefault(topic_key, {}).setdefault(difficulty_key, []).append(card)
-    with open(CUSTOM_CARDS_PATH, "w") as f:
-        json.dump(saved, f, indent=2)
-
-
 def _is_close_enough(user_answer: str, correct_answer: str) -> bool:
     """Accept near-misses on word-like answers (typos, partial words like
     'debug' for 'debugging'), but require an exact match for short or
@@ -362,6 +411,8 @@ def check_answer_and_next(user_answer: str) -> dict:
     else:
         score["incorrect"] += 1
         topic_tally["incorrect"] += 1
+    _persist_score()
+    _persist_topic_stat(topic_key)
 
     result = {
         "correct": is_correct,
