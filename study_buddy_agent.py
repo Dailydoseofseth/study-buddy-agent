@@ -245,10 +245,6 @@ _load_custom_cards()
 score = _load_score()
 topic_stats = _load_topic_stats()
 
-# Per-topic shuffled draw piles, so a quiz session works through every card
-# in a topic before any repeat. Refilled and reshuffled once exhausted.
-_draw_piles = {}
-
 # The flashcard most recently handed out, tracked server-side so grading
 # always checks against the question we actually asked — rather than
 # trusting the model to echo the question text back verbatim, which it can
@@ -281,6 +277,7 @@ quiz_state = {
     "start_incorrect": 0,
     "multiple_choice": False,
     "topic_key": "",
+    "pile": [],
 }
 
 
@@ -299,29 +296,14 @@ def _build_choices(topic_key: str, correct_answer: str) -> list:
     return choices
 
 
-def _draw_next_card(topic_key: str, difficulty: str, multiple_choice: bool = False) -> str:
-    """Pop the next card off the topic+difficulty's shuffled draw pile
-    (reshuffling a fresh one if empty) and record it as the current question.
-    topic_key may be a real topic, or one of MIXED_TOPIC_KEYS to draw from
-    every topic combined — each card in that pile keeps its own real topic
-    (tagged at pile-build time) for scoring and distractor selection."""
+def _draw_next_card(multiple_choice: bool = False) -> str:
+    """Pop the next card off this session's pile — a full, pre-shuffled pool
+    built once in get_flashcard and never refilled mid-quiz, so a session can
+    never repeat a question (get_flashcard caps num_questions to the pool
+    size for exactly this reason)."""
     global current_question
-    pile_key = f"{topic_key}:{difficulty}"
-    pile = _draw_piles.get(pile_key)
-    if not pile:
-        if topic_key in MIXED_TOPIC_KEYS:
-            pile = [
-                {**c, "topic": t}
-                for t, tiers in FLASHCARDS.items()
-                for c in tiers.get(difficulty, [])
-            ]
-        else:
-            pile = [{**c, "topic": topic_key} for c in FLASHCARDS[topic_key][difficulty]]
-        random.shuffle(pile)
-        _draw_piles[pile_key] = pile
-
-    card = pile.pop()
-    current_question = {**card, "difficulty": difficulty}
+    card = quiz_state["pile"].pop()
+    current_question = dict(card)
     if multiple_choice:
         current_question["choices"] = _build_choices(card["topic"], card["answer"])
     return card["question"]
@@ -358,19 +340,42 @@ def get_flashcard(topic: str, num_questions: int = 3, difficulty: str = None, mu
     else:
         difficulty_key = _suggest_difficulty(topic_key)
 
-    quiz_state["num_questions"] = max(1, num_questions)
+    if topic_key in MIXED_TOPIC_KEYS:
+        pool = [
+            {**c, "topic": t, "difficulty": difficulty_key}
+            for t, tiers in FLASHCARDS.items()
+            for c in tiers.get(difficulty_key, [])
+        ]
+    else:
+        pool = [{**c, "topic": topic_key, "difficulty": difficulty_key} for c in FLASHCARDS[topic_key].get(difficulty_key, [])]
+
+    if not pool:
+        return {"error": f"No {difficulty_key} questions available for '{topic}' yet."}
+
+    random.shuffle(pool)
+    requested_num_questions = max(1, num_questions)
+    # Cap to the pool size — every card in a pile is unique, so a session can
+    # never ask more questions than there are distinct ones to ask, which
+    # means it can never repeat one either.
+    actual_num_questions = min(requested_num_questions, len(pool))
+
+    quiz_state["pile"] = pool
+    quiz_state["num_questions"] = actual_num_questions
     quiz_state["question_num"] = 1
     quiz_state["start_correct"] = score["correct"]
     quiz_state["start_incorrect"] = score["incorrect"]
     quiz_state["multiple_choice"] = bool(multiple_choice)
     quiz_state["topic_key"] = topic_key
     result = {
-        "question": _draw_next_card(topic_key, difficulty_key, quiz_state["multiple_choice"]),
+        "question": _draw_next_card(quiz_state["multiple_choice"]),
         "question_num": quiz_state["question_num"],
         "num_questions": quiz_state["num_questions"],
         "difficulty": difficulty_key,
         "topic": current_question["topic"],
     }
+    if actual_num_questions < requested_num_questions:
+        result["capped"] = True
+        result["requested_num_questions"] = requested_num_questions
     if quiz_state["multiple_choice"]:
         result["choices"] = current_question["choices"]
     return result
@@ -486,9 +491,7 @@ def check_answer_and_next(user_answer: str) -> dict:
         }
         current_question = None
     else:
-        # Draw from the session's chosen topic_key (may be "mixed"), not this
-        # card's own real topic — that's only for scoring/stats attribution.
-        result["next_question"] = _draw_next_card(quiz_state["topic_key"], difficulty_key, quiz_state["multiple_choice"])
+        result["next_question"] = _draw_next_card(quiz_state["multiple_choice"])
         result["question_num"] = quiz_state["question_num"]
         result["num_questions"] = quiz_state["num_questions"]
         result["difficulty"] = difficulty_key
@@ -773,8 +776,15 @@ def _format_tool_reply(call_name: str, result: dict):
     if call_name == "get_flashcard":
         if "error" in result:
             return result["error"]
+        note = ""
+        if result.get("capped"):
+            note = (
+                f"(Only {result['num_questions']} unique question"
+                f"{'s' if result['num_questions'] != 1 else ''} available for this — "
+                f"shortening the quiz from {result['requested_num_questions']}.)\n\n"
+            )
         return (
-            f"{_format_question_header(result)}\n\n{result['question']}"
+            f"{note}{_format_question_header(result)}\n\n{result['question']}"
             f"{_format_choices(result.get('choices'))}"
         )
 
