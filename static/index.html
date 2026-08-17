@@ -4,12 +4,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Study Buddy Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <div class="crt-overlay" aria-hidden="true"></div>
   <div class="app">
+    <div class="grid-horizon" aria-hidden="true"></div>
     <header class="app-header">
-      <h1 class="app-title">Study Buddy Agent</h1>
+      <h1 class="app-title" data-text="STUDY BUDDY">STUDY BUDDY</h1>
       <div id="score-display" class="score-display" aria-live="polite">✓ 0  ✗ 0  Total: 0</div>
     </header>
 
@@ -27,10 +32,10 @@
         id="message-input"
         type="text"
         autocomplete="off"
-        placeholder="Type your message..."
+        placeholder="TYPE YOUR MESSAGE..."
         aria-label="Message"
       >
-      <button id="send-button" type="submit">Send</button>
+      <button id="send-button" type="submit">SEND</button>
     </form>
   </div>
 
