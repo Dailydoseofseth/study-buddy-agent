@@ -103,6 +103,57 @@ FLASHCARDS = {
             {"question": "What is the general term for a bug that only occurs intermittently, making it hard to reproduce consistently?", "answer": "flaky", "hint": "Testers use this word for a test that passes sometimes and fails other times with no code changes.", "emoji": "🎲"},
         ],
     },
+    "python": {
+        "easy": [
+            {"question": "What keyword defines a reusable function in Python?", "answer": "def", "hint": "Three letters, always followed by a name and parentheses.", "emoji": "🧩"},
+            {"question": "What keyword is used to define a new class?", "answer": "class", "hint": "It introduces a blueprint used to create objects.", "emoji": "🏗️"},
+            {"question": "What built-in function returns an object's type?", "answer": "type", "hint": "Call it on any value to see what kind of object it is, similar to JavaScript's typeof.", "emoji": "🏷️"},
+        ],
+        "medium": [
+            {"question": "What keyword creates a small anonymous function in a single expression?", "answer": "lambda", "hint": "It's used for short, throwaway functions defined inline without a name.", "emoji": "🪄"},
+            {"question": "What is the conventional name for the first parameter of an instance method, referring to the object itself?", "answer": "self", "hint": "By convention (not by force), instance methods take this as their first parameter.", "emoji": "🪞"},
+            {"question": "What syntax in a function definition lets it accept an arbitrary number of positional arguments?", "answer": "*args", "hint": "The asterisk collects extra positional arguments into a tuple.", "emoji": "📦"},
+        ],
+        "hard": [
+            {"question": "What global lock in CPython ensures only one thread executes Python bytecode at a time?", "answer": "GIL", "hint": "It's the reason threading doesn't speed up CPU-bound Python code, though multiprocessing sidesteps it.", "emoji": "🔐"},
+            {"question": "What decorator marks a method to be looked up on the class with no implicit first argument at all?", "answer": "staticmethod", "hint": "Unlike @classmethod, it receives neither the instance nor the class automatically.", "emoji": "🧱"},
+            {"question": "What term describes an object implementing __enter__ and __exit__ so it can be used with a 'with' block?", "answer": "context manager", "hint": "It handles setup and teardown around a block automatically, like closing a file for you.", "emoji": "🚪"},
+        ],
+    },
+    "git": {
+        "easy": [
+            {"question": "What command creates a local copy of a remote repository, including its full history?", "answer": "clone", "hint": "Usually the very first command you run when starting on someone else's project.", "emoji": "📥"},
+            {"question": "What command records staged changes as a new snapshot in the repository's history?", "answer": "commit", "hint": "Pairs with a message describing what changed — think of it as saving a checkpoint.", "emoji": "💾"},
+            {"question": "What command uploads your local commits to a remote repository?", "answer": "push", "hint": "The opposite direction of pulling — sends your work upstream.", "emoji": "📤"},
+        ],
+        "medium": [
+            {"question": "What command creates a new pointer to a line of development so you can work without affecting the main codebase?", "answer": "branch", "hint": "Git's lightweight way to isolate work — you're on 'main' or 'master' by default.", "emoji": "🌿"},
+            {"question": "What command combines the history of one line of development into another, sometimes creating a commit with two parents?", "answer": "merge", "hint": "Often runs after a pull request is approved, weaving two histories back together.", "emoji": "🔀"},
+            {"question": "What command temporarily shelves uncommitted changes so you can switch context with a clean working directory?", "answer": "stash", "hint": "Think of it as a junk drawer for changes you're not ready to commit yet.", "emoji": "🗄️"},
+        ],
+        "hard": [
+            {"question": "What interactive command lets you reorder, squash, or edit past commits before replaying them onto a new base?", "answer": "rebase", "hint": "It replays commits onto a new base, and with the right flag lets you rewrite history along the way.", "emoji": "🧩"},
+            {"question": "What command applies the changes from a single specific commit onto another branch, without merging the whole branch?", "answer": "cherry-pick", "hint": "Lets you grab one commit's changes only, like plucking a single piece of fruit off a tree.", "emoji": "🍒"},
+            {"question": "What command shows a history of everywhere HEAD and branch tips have pointed, even after a hard reset or rebase?", "answer": "reflog", "hint": "Your safety net for recovering commits that no longer show up in the normal history.", "emoji": "🕵️"},
+        ],
+    },
+    "sql": {
+        "easy": [
+            {"question": "What SQL keyword retrieves data from a table?", "answer": "SELECT", "hint": "It's the first word in almost every query that reads data.", "emoji": "🔍"},
+            {"question": "What clause filters rows based on a condition?", "answer": "WHERE", "hint": "It narrows down which rows make it into the result before any grouping happens.", "emoji": "🚦"},
+            {"question": "What keyword adds new rows to a table?", "answer": "INSERT", "hint": "Paired with INTO and VALUES to add a record.", "emoji": "➕"},
+        ],
+        "medium": [
+            {"question": "What clause groups rows sharing a value so aggregate functions like COUNT or AVG can be applied per group?", "answer": "GROUP BY", "hint": "It comes right before HAVING and collapses matching rows into summary buckets.", "emoji": "🗂️"},
+            {"question": "What type of join returns all rows from the first table plus matching rows from the second, filling unmatched columns with NULLs?", "answer": "LEFT JOIN", "hint": "Named for which side of the join always keeps every one of its rows.", "emoji": "🔗"},
+            {"question": "What clause filters grouped results after aggregation, unlike WHERE which filters rows beforehand?", "answer": "HAVING", "hint": "It follows GROUP BY and can reference aggregate values like SUM or COUNT.", "emoji": "🧮"},
+        ],
+        "hard": [
+            {"question": "What feature defines a temporary named result set for use within a single query, introduced with the WITH keyword?", "answer": "CTE", "hint": "Can be recursive and makes complex subqueries easier to read.", "emoji": "🪜"},
+            {"question": "What acronym describes the four properties (atomicity, consistency, isolation, durability) that guarantee reliable transactions?", "answer": "ACID", "hint": "A four-letter acronym database engineers cite when transactions must be trustworthy.", "emoji": "🛡️"},
+            {"question": "What category of function, like RANK() or ROW_NUMBER(), computes values across a set of related rows without collapsing them into one output row?", "answer": "window function", "hint": "It uses an OVER() clause and keeps every row in the result instead of grouping them away.", "emoji": "🪟"},
+        ],
+    },
 }
 
 DIFFICULTIES = ("easy", "medium", "hard")
