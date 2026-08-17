@@ -83,6 +83,27 @@ FLASHCARDS = {
 
 DIFFICULTIES = ("easy", "medium", "hard")
 
+# Special topic keys that draw from every real topic combined, instead of one deck.
+MIXED_TOPIC_KEYS = ("mixed", "all")
+
+# User-authored cards persist here across restarts, merged into FLASHCARDS
+# at import time so they're indistinguishable from the built-in deck once loaded.
+CUSTOM_CARDS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "custom_flashcards.json")
+
+
+def _load_custom_cards() -> None:
+    if not os.path.exists(CUSTOM_CARDS_PATH):
+        return
+    with open(CUSTOM_CARDS_PATH) as f:
+        saved = json.load(f)
+    for topic_key, tiers in saved.items():
+        deck = FLASHCARDS.setdefault(topic_key, {tier: [] for tier in DIFFICULTIES})
+        for tier, cards in tiers.items():
+            deck.setdefault(tier, []).extend(cards)
+
+
+_load_custom_cards()
+
 # Stretch goal: score persists across the conversation for as long as this
 # process keeps running (a plain global dict the tool functions update).
 score = {"correct": 0, "incorrect": 0}
@@ -108,6 +129,11 @@ current_question = None
 # that actually graded an answer, not for unrelated turns (e.g. "what's my score").
 last_answer_correct = None
 
+# The question+answer most recently graded, kept around after current_question
+# moves on to the next card, so explain_answer can still refer back to it if
+# the user asks "why?" right after seeing their result.
+last_graded_question = None
+
 # How many questions the current quiz was asked for, and how far into it we
 # are — tracked here (not left to the model's memory) so Python itself can
 # render "Question 2 of 3" and detect quiz-complete, which is what lets the
@@ -121,6 +147,7 @@ quiz_state = {
     "start_correct": 0,
     "start_incorrect": 0,
     "multiple_choice": False,
+    "topic_key": "",
 }
 
 
@@ -141,19 +168,29 @@ def _build_choices(topic_key: str, correct_answer: str) -> list:
 
 def _draw_next_card(topic_key: str, difficulty: str, multiple_choice: bool = False) -> str:
     """Pop the next card off the topic+difficulty's shuffled draw pile
-    (reshuffling a fresh one if empty) and record it as the current question."""
+    (reshuffling a fresh one if empty) and record it as the current question.
+    topic_key may be a real topic, or one of MIXED_TOPIC_KEYS to draw from
+    every topic combined — each card in that pile keeps its own real topic
+    (tagged at pile-build time) for scoring and distractor selection."""
     global current_question
     pile_key = f"{topic_key}:{difficulty}"
     pile = _draw_piles.get(pile_key)
     if not pile:
-        pile = list(FLASHCARDS[topic_key][difficulty])
+        if topic_key in MIXED_TOPIC_KEYS:
+            pile = [
+                {**c, "topic": t}
+                for t, tiers in FLASHCARDS.items()
+                for c in tiers.get(difficulty, [])
+            ]
+        else:
+            pile = [{**c, "topic": topic_key} for c in FLASHCARDS[topic_key][difficulty]]
         random.shuffle(pile)
         _draw_piles[pile_key] = pile
 
     card = pile.pop()
-    current_question = {**card, "topic": topic_key, "difficulty": difficulty}
+    current_question = {**card, "difficulty": difficulty}
     if multiple_choice:
-        current_question["choices"] = _build_choices(topic_key, card["answer"])
+        current_question["choices"] = _build_choices(card["topic"], card["answer"])
     return card["question"]
 
 
@@ -178,8 +215,8 @@ def get_flashcard(topic: str, num_questions: int = 3, difficulty: str = None, mu
     Only call this to START a topic — after grading an answer, check_answer_and_next
     already returns the next question, so don't call this again mid-quiz."""
     topic_key = topic.strip().lower()
-    if topic_key not in FLASHCARDS:
-        return {"error": f"No flashcards for '{topic}'. Try: {', '.join(FLASHCARDS)}."}
+    if topic_key not in FLASHCARDS and topic_key not in MIXED_TOPIC_KEYS:
+        return {"error": f"No flashcards for '{topic}'. Try: {', '.join(FLASHCARDS)}, or 'mixed' for all topics."}
 
     if difficulty:
         difficulty_key = difficulty.strip().lower()
@@ -193,15 +230,49 @@ def get_flashcard(topic: str, num_questions: int = 3, difficulty: str = None, mu
     quiz_state["start_correct"] = score["correct"]
     quiz_state["start_incorrect"] = score["incorrect"]
     quiz_state["multiple_choice"] = bool(multiple_choice)
+    quiz_state["topic_key"] = topic_key
     result = {
         "question": _draw_next_card(topic_key, difficulty_key, quiz_state["multiple_choice"]),
         "question_num": quiz_state["question_num"],
         "num_questions": quiz_state["num_questions"],
         "difficulty": difficulty_key,
+        "topic": current_question["topic"],
     }
     if quiz_state["multiple_choice"]:
         result["choices"] = current_question["choices"]
     return result
+
+
+def add_flashcard(topic: str, question: str, answer: str, hint: str = "", difficulty: str = "easy") -> dict:
+    """Add a new flashcard, creating the topic if it doesn't already exist.
+    Persisted to disk immediately so it's still there next time the app starts."""
+    topic_key = topic.strip().lower()
+    if topic_key in MIXED_TOPIC_KEYS:
+        return {"error": f"'{topic}' is a reserved keyword for quizzing across all topics, not a topic itself."}
+    difficulty_key = (difficulty or "easy").strip().lower()
+    if difficulty_key not in DIFFICULTIES:
+        return {"error": f"'{difficulty}' isn't a difficulty tier. Try: {', '.join(DIFFICULTIES)}."}
+    if not question.strip() or not answer.strip():
+        return {"error": "Both question and answer are required."}
+
+    card = {
+        "question": question.strip(),
+        "answer": answer.strip(),
+        "hint": hint.strip() or "No hint available for this one.",
+    }
+    FLASHCARDS.setdefault(topic_key, {tier: [] for tier in DIFFICULTIES})[difficulty_key].append(card)
+    _persist_custom_card(topic_key, difficulty_key, card)
+    return {"added": True, "topic": topic_key, "difficulty": difficulty_key, "question": card["question"]}
+
+
+def _persist_custom_card(topic_key: str, difficulty_key: str, card: dict) -> None:
+    saved = {}
+    if os.path.exists(CUSTOM_CARDS_PATH):
+        with open(CUSTOM_CARDS_PATH) as f:
+            saved = json.load(f)
+    saved.setdefault(topic_key, {}).setdefault(difficulty_key, []).append(card)
+    with open(CUSTOM_CARDS_PATH, "w") as f:
+        json.dump(saved, f, indent=2)
 
 
 def _is_close_enough(user_answer: str, correct_answer: str) -> bool:
@@ -246,7 +317,7 @@ def check_answer_and_next(user_answer: str) -> dict:
     one tool call (instead of a separate check_answer + get_flashcard) so a
     3-question quiz costs ~3-4 API round-trips instead of ~6-8, which matters
     a lot on the free tier's 5-requests/minute cap."""
-    global current_question, last_answer_correct
+    global current_question, last_answer_correct, last_graded_question
     if current_question is None:
         return {"error": "No active question — call get_flashcard first."}
 
@@ -256,6 +327,11 @@ def check_answer_and_next(user_answer: str) -> dict:
     user_answer = _resolve_choice_letter(user_answer, current_question.get("choices"))
     is_correct = _is_close_enough(user_answer, correct_answer)
     last_answer_correct = is_correct
+    last_graded_question = {
+        "question": current_question["question"],
+        "correct_answer": correct_answer,
+        "topic": topic_key,
+    }
     topic_tally = topic_stats.setdefault(topic_key, {"correct": 0, "incorrect": 0})
     if is_correct:
         score["correct"] += 1
@@ -285,10 +361,13 @@ def check_answer_and_next(user_answer: str) -> dict:
         }
         current_question = None
     else:
-        result["next_question"] = _draw_next_card(topic_key, difficulty_key, quiz_state["multiple_choice"])
+        # Draw from the session's chosen topic_key (may be "mixed"), not this
+        # card's own real topic — that's only for scoring/stats attribution.
+        result["next_question"] = _draw_next_card(quiz_state["topic_key"], difficulty_key, quiz_state["multiple_choice"])
         result["question_num"] = quiz_state["question_num"]
         result["num_questions"] = quiz_state["num_questions"]
         result["difficulty"] = difficulty_key
+        result["topic"] = current_question["topic"]
         if quiz_state["multiple_choice"]:
             result["choices"] = current_question["choices"]
 
@@ -299,6 +378,17 @@ def get_score() -> dict:
     """Report how many questions the user has gotten right vs wrong so far this session."""
     total = score["correct"] + score["incorrect"]
     return {"correct": score["correct"], "incorrect": score["incorrect"], "total": total}
+
+
+def explain_answer() -> dict:
+    """Return the most recently graded question, its correct answer, and its
+    topic — not an explanation itself. The model is expected to use its own
+    knowledge to compose a short teaching explanation from these facts,
+    which is why this deliberately has no entry in _format_tool_reply: the
+    whole point is letting the model phrase it, not returning canned text."""
+    if last_graded_question is None:
+        return {"error": "No graded question yet to explain — answer a question first."}
+    return dict(last_graded_question)
 
 
 def get_current_hint() -> str | None:
@@ -332,6 +422,8 @@ TOOL_FUNCTIONS = {
     "get_flashcard": get_flashcard,
     "check_answer_and_next": check_answer_and_next,
     "get_score": get_score,
+    "explain_answer": explain_answer,
+    "add_flashcard": add_flashcard,
 }
 
 # Tell Gemini what each tool does and what arguments it takes.
@@ -350,7 +442,7 @@ TOOL_DECLARATIONS = [
             "properties": {
                 "topic": {
                     "type": "string",
-                    "description": f"Topic deck to pull from. One of: {', '.join(FLASHCARDS)}.",
+                    "description": f"Topic deck to pull from. One of: {', '.join(FLASHCARDS)}. Pass 'mixed' if the user wants questions drawn from every topic in one quiz.",
                 },
                 "num_questions": {
                     "type": "integer",
@@ -395,6 +487,57 @@ TOOL_DECLARATIONS = [
         "parameters": {
             "type": "object",
             "properties": {},
+        },
+    },
+    {
+        "type": "function",
+        "name": "explain_answer",
+        "description": (
+            "Call this when the user asks why an answer is correct, asks for more detail after "
+            "seeing a graded result, or otherwise wants the most recently graded question "
+            "explained (e.g. 'why?', 'explain that', 'I don't get it'). Returns the question, "
+            "its correct answer, and its topic — then compose a short (1-3 sentence) teaching "
+            "explanation yourself using that context and your own knowledge of the topic."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "type": "function",
+        "name": "add_flashcard",
+        "description": (
+            "Adds a new flashcard the user dictates, e.g. 'add a flashcard to bugs: what's the "
+            "insect stage after pupa? answer: adult'. Creates the topic if it doesn't exist yet. "
+            "Persists to disk, so it's available in future sessions too."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "topic": {
+                    "type": "string",
+                    "description": "Topic deck to add this card to (existing or brand new).",
+                },
+                "question": {
+                    "type": "string",
+                    "description": "The flashcard's question text.",
+                },
+                "answer": {
+                    "type": "string",
+                    "description": "The correct answer.",
+                },
+                "hint": {
+                    "type": "string",
+                    "description": "A short hint for this question. Make one up if the user didn't give one.",
+                },
+                "difficulty": {
+                    "type": "string",
+                    "enum": list(DIFFICULTIES),
+                    "description": "Difficulty tier for this card. Default to 'easy' unless the user says otherwise.",
+                },
+            },
+            "required": ["topic", "question", "answer"],
         },
     },
 ]
@@ -453,6 +596,15 @@ def _rate_limit_wait_seconds(exc: Exception, attempt: int) -> float:
     return fallback_schedule[min(attempt - 1, len(fallback_schedule) - 1)]
 
 
+def _format_question_header(result: dict) -> str:
+    """Render the '**Question X of Y (difficulty)**' header, adding the
+    card's own topic in mixed mode since the deck varies question to question."""
+    header = f"**Question {result['question_num']} of {result['num_questions']} ({result['difficulty']})"
+    if quiz_state["topic_key"] in MIXED_TOPIC_KEYS:
+        header += f" — {result['topic']}"
+    return header + ":**"
+
+
 def _format_choices(choices: list | None) -> str:
     """Render multiple-choice options as a lettered list, prefixed with a
     blank line — empty string (no-op) when there are no choices."""
@@ -473,8 +625,7 @@ def _format_tool_reply(call_name: str, result: dict):
         if "error" in result:
             return result["error"]
         return (
-            f"**Question {result['question_num']} of {result['num_questions']} "
-            f"({result['difficulty']}):**\n\n{result['question']}"
+            f"{_format_question_header(result)}\n\n{result['question']}"
             f"{_format_choices(result.get('choices'))}"
         )
 
@@ -490,13 +641,17 @@ def _format_tool_reply(call_name: str, result: dict):
             )
         return (
             f"{result['feedback']}\n\n"
-            f"**Question {result['question_num']} of {result['num_questions']} "
-            f"({result['difficulty']}):**\n\n{result['next_question']}"
+            f"{_format_question_header(result)}\n\n{result['next_question']}"
             f"{_format_choices(result.get('choices'))}"
         )
 
     if call_name == "get_score":
         return f"You've gotten {result['correct']} correct and {result['incorrect']} incorrect out of {result['total']} so far."
+
+    if call_name == "add_flashcard":
+        if "error" in result:
+            return result["error"]
+        return f"Added to **{result['topic']}** ({result['difficulty']}): \"{result['question']}\""
 
     return None
 
