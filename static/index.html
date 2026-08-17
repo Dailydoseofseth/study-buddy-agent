@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Study Buddy Agent</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <h1 class="app-title">Study Buddy Agent</h1>
+      <div id="score-display" class="score-display" aria-live="polite">✓ 0  ✗ 0  Total: 0</div>
+    </header>
+
+    <main id="chat-log" class="chat-log" aria-live="polite">
+      <div class="message agent">
+        <div class="bubble">
+          Ask me to quiz you! Try: <em>"Quiz me on bugs for 3 questions and keep score."</em><br>
+          Topics: js syntax, bugs, debugs.
+        </div>
+      </div>
+    </main>
+
+    <form id="input-row" class="input-row">
+      <input
+        id="message-input"
+        type="text"
+        autocomplete="off"
+        placeholder="Type your message..."
+        aria-label="Message"
+      >
+      <button id="send-button" type="submit">Send</button>
+    </form>
+  </div>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>
