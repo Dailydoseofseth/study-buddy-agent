@@ -47,15 +47,51 @@
     scrollToBottom();
   }
 
-  function appendAgentMessage(text) {
+  function appendAgentMessage(text, hint) {
     var row = document.createElement("div");
     row.className = "message agent";
+
+    var wrap = document.createElement("div");
+    wrap.className = "agent-wrap";
+
     var bubble = document.createElement("div");
     bubble.className = "bubble";
     bubble.innerHTML = formatReply(text);
-    row.appendChild(bubble);
+    wrap.appendChild(bubble);
+
+    if (hint) {
+      wrap.appendChild(buildHintToggle(hint));
+    }
+
+    row.appendChild(wrap);
     chatLog.appendChild(row);
     scrollToBottom();
+  }
+
+  function buildHintToggle(hint) {
+    var hintBtn = document.createElement("button");
+    hintBtn.type = "button";
+    hintBtn.className = "hint-toggle";
+    hintBtn.textContent = "💡 HINT";
+
+    var hintBox = document.createElement("div");
+    hintBox.className = "hint-box hidden";
+    hintBox.textContent = hint;
+
+    hintBtn.addEventListener("click", function () {
+      var revealing = hintBox.classList.contains("hidden");
+      hintBox.classList.toggle("hidden");
+      hintBtn.textContent = revealing ? "💡 HIDE HINT" : "💡 HINT";
+      if (revealing) {
+        scrollToBottom();
+      }
+    });
+
+    var group = document.createElement("div");
+    group.className = "hint-group";
+    group.appendChild(hintBtn);
+    group.appendChild(hintBox);
+    return group;
   }
 
   function appendErrorMessage(text) {
@@ -129,7 +165,7 @@
       .then(function (result) {
         removeLoadingIndicator();
         if (result.ok && result.data && typeof result.data.reply === "string") {
-          appendAgentMessage(result.data.reply);
+          appendAgentMessage(result.data.reply, result.data.hint);
           updateScore(result.data.score);
         } else {
           var errMsg =

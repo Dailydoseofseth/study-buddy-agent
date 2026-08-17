@@ -189,6 +189,63 @@ html, body {
   text-shadow: 0 0 6px rgba(249, 248, 113, 0.7);
 }
 
+/* ---------- Hint toggle ---------- */
+
+.agent-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 78%;
+}
+
+.agent-wrap .bubble {
+  max-width: 100%;
+}
+
+.hint-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+
+.hint-toggle {
+  padding: 4px 12px;
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  letter-spacing: 0.5px;
+  color: var(--purple);
+  background: rgba(185, 103, 255, 0.08);
+  border: 1px solid var(--purple);
+  border-radius: 999px;
+  cursor: pointer;
+  text-shadow: 0 0 6px rgba(185, 103, 255, 0.6);
+  box-shadow: 0 0 8px rgba(185, 103, 255, 0.35);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.hint-toggle:hover {
+  background: rgba(185, 103, 255, 0.18);
+  box-shadow: 0 0 14px rgba(185, 103, 255, 0.6);
+}
+
+.hint-box {
+  width: 100%;
+  padding: 10px 14px;
+  font-size: 1rem;
+  color: var(--yellow);
+  background: rgba(249, 248, 113, 0.06);
+  border: 1px dashed var(--yellow);
+  border-radius: 2px;
+  text-shadow: 0 0 4px rgba(249, 248, 113, 0.5);
+}
+
+.hint-box.hidden {
+  display: none;
+}
+
 .message.error .bubble {
   background: rgba(255, 0, 0, 0.08);
   color: #ff6b6b;

@@ -15,7 +15,7 @@ import os
 from flask import Flask, request, jsonify
 from google import genai
 
-from study_buddy_agent import run_agent_turn, get_score
+from study_buddy_agent import run_agent_turn, get_score, get_current_hint
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 
@@ -43,7 +43,8 @@ def chat():
         return jsonify({"error": str(exc)}), 500
 
     score = get_score()
-    return jsonify({"reply": reply, "score": score})
+    hint = get_current_hint()
+    return jsonify({"reply": reply, "score": score, "hint": hint})
 
 
 if __name__ == "__main__":

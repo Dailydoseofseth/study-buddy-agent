@@ -27,25 +27,25 @@ MODEL = "gemini-3.6-flash"
 
 FLASHCARDS = {
     "js syntax": [
-        {"question": "What keyword declares a block-scoped variable that can be reassigned?", "answer": "let"},
-        {"question": "What keyword declares a variable that cannot be reassigned?", "answer": "const"},
-        {"question": "What array method creates a new array by transforming every element?", "answer": "map"},
-        {"question": "What operator checks equality without type coercion?", "answer": "==="},
-        {"question": "What symbol wraps a template literal string?", "answer": "`"},
+        {"question": "What keyword declares a block-scoped variable that can be reassigned?", "answer": "let", "hint": "Reassignable, block-scoped — introduced in ES6 alongside const."},
+        {"question": "What keyword declares a variable that cannot be reassigned?", "answer": "const", "hint": "Block-scoped like let, but the binding can't be reassigned."},
+        {"question": "What array method creates a new array by transforming every element?", "answer": "map", "hint": "Returns a brand-new array — the original is left untouched."},
+        {"question": "What operator checks equality without type coercion?", "answer": "===", "hint": "Compares both value and type — no coercion allowed."},
+        {"question": "What symbol wraps a template literal string?", "answer": "`", "hint": "Lets you embed ${expressions} directly inside a string."},
     ],
     "bugs": [
-        {"question": "How many legs does an insect have?", "answer": "6"},
-        {"question": "What is the largest order of insects, containing beetles?", "answer": "Coleoptera"},
-        {"question": "What do you call a butterfly in its larval stage?", "answer": "caterpillar"},
-        {"question": "What is the scientific study of insects called?", "answer": "entomology"},
-        {"question": "How many wings does a typical housefly have?", "answer": "2"},
+        {"question": "How many legs does an insect have?", "answer": "6", "hint": "Count the legs on a housefly or an ant — that's the number."},
+        {"question": "What is the largest order of insects, containing beetles?", "answer": "Coleoptera", "hint": "This order includes ladybugs and fireflies — both beetles."},
+        {"question": "What do you call a butterfly in its larval stage?", "answer": "caterpillar", "hint": "This is what a butterfly looks like before it grows wings."},
+        {"question": "What is the scientific study of insects called?", "answer": "entomology", "hint": "The prefix 'ento-' comes from Greek for 'insect'."},
+        {"question": "How many wings does a typical housefly have?", "answer": "2", "hint": "Flies belong to the order Diptera — 'di-' means two."},
     ],
     "debugs": [
-        {"question": "What is the common term for pausing code execution at a specific line to inspect state?", "answer": "breakpoint"},
-        {"question": "What tool lets you step through code line-by-line to inspect variables?", "answer": "debugger"},
-        {"question": "What do you call an error that occurs while the program is running, not at compile time?", "answer": "runtime error"},
-        {"question": "What is the process of finding and fixing bugs in code called?", "answer": "debugging"},
-        {"question": "What browser feature lets you inspect the DOM and console errors?", "answer": "DevTools"},
+        {"question": "What is the common term for pausing code execution at a specific line to inspect state?", "answer": "breakpoint", "hint": "You set this in your IDE to pause execution mid-run."},
+        {"question": "What tool lets you step through code line-by-line to inspect variables?", "answer": "debugger", "hint": "Chrome DevTools has a panel named exactly this."},
+        {"question": "What do you call an error that occurs while the program is running, not at compile time?", "answer": "runtime error", "hint": "Contrast this with a 'syntax error', which happens before the code even runs."},
+        {"question": "What is the process of finding and fixing bugs in code called?", "answer": "debugging", "hint": "It's literally the '-ing' form of removing bugs from code."},
+        {"question": "What browser feature lets you inspect the DOM and console errors?", "answer": "DevTools", "hint": "Right-click any webpage and choose 'Inspect' to open this."},
     ],
 }
 
@@ -168,6 +168,7 @@ def check_answer_and_next(user_answer: str) -> dict:
             "incorrect": quiz_incorrect,
             "total": quiz_correct + quiz_incorrect,
         }
+        current_question = None
     else:
         result["next_question"] = _draw_next_card(topic_key)
         result["question_num"] = quiz_state["question_num"]
@@ -180,6 +181,14 @@ def get_score() -> dict:
     """Report how many questions the user has gotten right vs wrong so far this session."""
     total = score["correct"] + score["incorrect"]
     return {"correct": score["correct"], "incorrect": score["incorrect"], "total": total}
+
+
+def get_current_hint() -> str | None:
+    """Return the hint for whichever flashcard question is currently active,
+    or None if there isn't one (no quiz running, or the quiz just ended).
+    Not a model tool — server.py calls this directly so the frontend can
+    render a hint alongside the question without spending an extra API call."""
+    return current_question["hint"] if current_question else None
 
 
 # Map each tool's name (as Gemini will refer to it) to the function that runs it.
