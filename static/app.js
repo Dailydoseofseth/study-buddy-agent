@@ -37,6 +37,56 @@
     chatLog.scrollTop = chatLog.scrollHeight;
   }
 
+  // ---------- Sound feedback (Web Audio API, no asset files) ----------
+
+  var audioCtx = null;
+
+  function ensureAudioUnlocked() {
+    // Must be called from directly inside a user-gesture handler (click/submit)
+    // so the browser's autoplay policy lets the context actually run.
+    if (!audioCtx) {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) {
+        return;
+      }
+      audioCtx = new Ctx();
+    }
+    if (audioCtx.state === "suspended") {
+      audioCtx.resume();
+    }
+  }
+
+  function beep(freq, startTime, duration, type) {
+    var osc = audioCtx.createOscillator();
+    var gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, startTime);
+    gain.gain.setValueAtTime(0.15, startTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(startTime);
+    osc.stop(startTime + duration);
+  }
+
+  function playCorrectSound() {
+    if (!audioCtx) {
+      return;
+    }
+    var now = audioCtx.currentTime;
+    beep(660, now, 0.09, "square");
+    beep(880, now + 0.09, 0.14, "square");
+  }
+
+  function playIncorrectSound() {
+    if (!audioCtx) {
+      return;
+    }
+    var now = audioCtx.currentTime;
+    beep(180, now, 0.16, "sawtooth");
+    beep(120, now + 0.12, 0.22, "sawtooth");
+  }
+
   function appendUserMessage(text) {
     var row = document.createElement("div");
     row.className = "message user";
@@ -84,6 +134,7 @@
       btn.className = "choice-btn";
       btn.textContent = letters[i] + ") " + choice;
       btn.addEventListener("click", function () {
+        ensureAudioUnlocked();
         var buttons = group.querySelectorAll(".choice-btn");
         for (var j = 0; j < buttons.length; j++) {
           buttons[j].disabled = true;
@@ -195,6 +246,11 @@
         if (result.ok && result.data && typeof result.data.reply === "string") {
           appendAgentMessage(result.data.reply, result.data.hint, result.data.choices);
           updateScore(result.data.score);
+          if (result.data.correct === true) {
+            playCorrectSound();
+          } else if (result.data.correct === false) {
+            playIncorrectSound();
+          }
         } else {
           var errMsg =
             (result.data && result.data.error) || "Something went wrong.";
@@ -214,6 +270,7 @@
 
   inputRow.addEventListener("submit", function (event) {
     event.preventDefault();
+    ensureAudioUnlocked();
     var text = messageInput.value.trim();
     if (!text) {
       return;

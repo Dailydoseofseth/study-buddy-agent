@@ -99,6 +99,11 @@ _draw_piles = {}
 # needing to repeat the topic argument.
 current_question = None
 
+# Whether the most recently graded answer was correct — a one-shot flag
+# consumed by get_last_answer_correct() so a sound only fires for the turn
+# that actually graded an answer, not for unrelated turns (e.g. "what's my score").
+last_answer_correct = None
+
 # How many questions the current quiz was asked for, and how far into it we
 # are — tracked here (not left to the model's memory) so Python itself can
 # render "Question 2 of 3" and detect quiz-complete, which is what lets the
@@ -218,7 +223,7 @@ def check_answer_and_next(user_answer: str) -> dict:
     one tool call (instead of a separate check_answer + get_flashcard) so a
     3-question quiz costs ~3-4 API round-trips instead of ~6-8, which matters
     a lot on the free tier's 5-requests/minute cap."""
-    global current_question
+    global current_question, last_answer_correct
     if current_question is None:
         return {"error": "No active question — call get_flashcard first."}
 
@@ -227,6 +232,7 @@ def check_answer_and_next(user_answer: str) -> dict:
     difficulty_key = current_question["difficulty"]
     user_answer = _resolve_choice_letter(user_answer, current_question.get("choices"))
     is_correct = _is_close_enough(user_answer, correct_answer)
+    last_answer_correct = is_correct
     if is_correct:
         score["correct"] += 1
     else:
@@ -283,6 +289,16 @@ def get_current_choices() -> list | None:
     no active question). Not a model tool — same side-channel as
     get_current_hint, so the frontend can render answer buttons."""
     return current_question.get("choices") if current_question else None
+
+
+def get_last_answer_correct() -> bool | None:
+    """Consume (return-then-clear) whether the most recently graded answer
+    was correct. Returns None on any turn that didn't just grade an answer,
+    so the frontend only plays a correct/incorrect sound on the right turn."""
+    global last_answer_correct
+    value = last_answer_correct
+    last_answer_correct = None
+    return value
 
 
 # Map each tool's name (as Gemini will refer to it) to the function that runs it.
