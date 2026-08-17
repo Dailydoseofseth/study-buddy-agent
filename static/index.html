@@ -21,11 +21,20 @@
     <main id="chat-log" class="chat-log" aria-live="polite">
       <div class="message agent">
         <div class="bubble">
-          Ask me to quiz you! Try: <em>"Quiz me on bugs for 3 questions and keep score."</em><br>
-          Topics: js syntax, bugs, debugs.
+          Ask me to quiz you! Try: <em>"Quiz me on hard bugs for 3 questions and keep score."</em><br>
+          Topics: js syntax, bugs, debugs. Tiers: easy, medium, hard.<br>
+          Flip the switch below for multiple choice.
         </div>
       </div>
     </main>
+
+    <div class="mode-bar">
+      <label class="mc-switch">
+        <input type="checkbox" id="mc-toggle">
+        <span class="mc-track"><span class="mc-thumb"></span></span>
+        <span class="mc-label">MULTIPLE CHOICE</span>
+      </label>
+    </div>
 
     <form id="input-row" class="input-row">
       <input

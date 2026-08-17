@@ -246,6 +246,47 @@ html, body {
   display: none;
 }
 
+/* ---------- Multiple-choice buttons ---------- */
+
+.choice-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+}
+
+.choice-btn {
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  text-align: left;
+  color: var(--cyan);
+  background: rgba(5, 244, 224, 0.06);
+  border: 1px solid var(--cyan);
+  border-radius: 2px;
+  cursor: pointer;
+  text-shadow: 0 0 4px rgba(5, 244, 224, 0.5);
+  box-shadow: 0 0 8px rgba(5, 244, 224, 0.3);
+  transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.choice-btn:hover:not(:disabled) {
+  background: rgba(5, 244, 224, 0.16);
+  box-shadow: 0 0 14px rgba(5, 244, 224, 0.55);
+  transform: translateY(-1px);
+}
+
+.choice-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+@media (max-width: 480px) {
+  .choice-group {
+    grid-template-columns: 1fr;
+  }
+}
+
 .message.error .bubble {
   background: rgba(255, 0, 0, 0.08);
   color: #ff6b6b;
@@ -293,6 +334,73 @@ html, body {
     opacity: 1;
     transform: scale(1);
   }
+}
+
+/* ---------- Mode bar ---------- */
+
+.mode-bar {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 20px 0;
+  background: rgba(18, 10, 30, 0.6);
+  flex-shrink: 0;
+}
+
+.mc-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.mc-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.mc-track {
+  position: relative;
+  width: 36px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid var(--purple);
+  background: rgba(185, 103, 255, 0.1);
+  box-shadow: 0 0 6px rgba(185, 103, 255, 0.3);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.mc-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--purple);
+  box-shadow: 0 0 6px var(--purple);
+  transition: transform 0.15s ease;
+}
+
+.mc-switch input:checked ~ .mc-track {
+  background: rgba(185, 103, 255, 0.35);
+  box-shadow: 0 0 12px rgba(185, 103, 255, 0.7);
+}
+
+.mc-switch input:checked ~ .mc-track .mc-thumb {
+  transform: translateX(16px);
+}
+
+.mc-label {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  letter-spacing: 1px;
+  color: var(--purple);
+  text-shadow: 0 0 4px rgba(185, 103, 255, 0.5);
 }
 
 /* ---------- Input row ---------- */

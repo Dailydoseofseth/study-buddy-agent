@@ -106,10 +106,31 @@ current_question = None
 # start_correct/start_incorrect snapshot the lifetime score at quiz start, so
 # quiz_complete can report this quiz's own tally (a delta) instead of the
 # running lifetime total, which would include points from earlier quizzes.
-quiz_state = {"num_questions": 0, "question_num": 0, "start_correct": 0, "start_incorrect": 0}
+quiz_state = {
+    "num_questions": 0,
+    "question_num": 0,
+    "start_correct": 0,
+    "start_incorrect": 0,
+    "multiple_choice": False,
+}
 
 
-def _draw_next_card(topic_key: str, difficulty: str) -> str:
+def _build_choices(topic_key: str, correct_answer: str) -> list:
+    """Pick up to 3 wrong-answer distractors from elsewhere in the topic
+    (any tier) plus the correct answer, shuffled into a 4-option list."""
+    other_answers = {
+        card["answer"]
+        for tier_cards in FLASHCARDS[topic_key].values()
+        for card in tier_cards
+        if card["answer"] != correct_answer
+    }
+    distractors = random.sample(list(other_answers), k=min(3, len(other_answers)))
+    choices = distractors + [correct_answer]
+    random.shuffle(choices)
+    return choices
+
+
+def _draw_next_card(topic_key: str, difficulty: str, multiple_choice: bool = False) -> str:
     """Pop the next card off the topic+difficulty's shuffled draw pile
     (reshuffling a fresh one if empty) and record it as the current question."""
     global current_question
@@ -122,10 +143,12 @@ def _draw_next_card(topic_key: str, difficulty: str) -> str:
 
     card = pile.pop()
     current_question = {**card, "topic": topic_key, "difficulty": difficulty}
+    if multiple_choice:
+        current_question["choices"] = _build_choices(topic_key, card["answer"])
     return card["question"]
 
 
-def get_flashcard(topic: str, num_questions: int = 3, difficulty: str = "easy") -> dict:
+def get_flashcard(topic: str, num_questions: int = 3, difficulty: str = "easy", multiple_choice: bool = False) -> dict:
     """Start a quiz on the given topic by returning its first question (no answer).
     Only call this to START a topic — after grading an answer, check_answer_and_next
     already returns the next question, so don't call this again mid-quiz."""
@@ -141,12 +164,16 @@ def get_flashcard(topic: str, num_questions: int = 3, difficulty: str = "easy") 
     quiz_state["question_num"] = 1
     quiz_state["start_correct"] = score["correct"]
     quiz_state["start_incorrect"] = score["incorrect"]
-    return {
-        "question": _draw_next_card(topic_key, difficulty_key),
+    quiz_state["multiple_choice"] = bool(multiple_choice)
+    result = {
+        "question": _draw_next_card(topic_key, difficulty_key, quiz_state["multiple_choice"]),
         "question_num": quiz_state["question_num"],
         "num_questions": quiz_state["num_questions"],
         "difficulty": difficulty_key,
     }
+    if quiz_state["multiple_choice"]:
+        result["choices"] = current_question["choices"]
+    return result
 
 
 def _is_close_enough(user_answer: str, correct_answer: str) -> bool:
@@ -171,6 +198,20 @@ def _is_close_enough(user_answer: str, correct_answer: str) -> bool:
     return difflib.SequenceMatcher(None, user_collapsed, correct_collapsed).ratio() >= 0.75
 
 
+def _resolve_choice_letter(user_answer: str, choices: list | None) -> str:
+    """In multiple-choice mode, let 'A'/'b)'/'C.' resolve to that option's
+    full text before grading — covers a user typing the letter instead of
+    clicking the button."""
+    if not choices:
+        return user_answer
+    letter = user_answer.strip().rstrip(".):").upper()
+    if len(letter) == 1 and letter.isalpha():
+        index = ord(letter) - ord("A")
+        if 0 <= index < len(choices):
+            return choices[index]
+    return user_answer
+
+
 def check_answer_and_next(user_answer: str) -> dict:
     """Grade the user's answer to the current flashcard, update the score, and
     immediately return the next question from the same topic — combined into
@@ -184,6 +225,7 @@ def check_answer_and_next(user_answer: str) -> dict:
     correct_answer = current_question["answer"]
     topic_key = current_question["topic"]
     difficulty_key = current_question["difficulty"]
+    user_answer = _resolve_choice_letter(user_answer, current_question.get("choices"))
     is_correct = _is_close_enough(user_answer, correct_answer)
     if is_correct:
         score["correct"] += 1
@@ -211,10 +253,12 @@ def check_answer_and_next(user_answer: str) -> dict:
         }
         current_question = None
     else:
-        result["next_question"] = _draw_next_card(topic_key, difficulty_key)
+        result["next_question"] = _draw_next_card(topic_key, difficulty_key, quiz_state["multiple_choice"])
         result["question_num"] = quiz_state["question_num"]
         result["num_questions"] = quiz_state["num_questions"]
         result["difficulty"] = difficulty_key
+        if quiz_state["multiple_choice"]:
+            result["choices"] = current_question["choices"]
 
     return result
 
@@ -231,6 +275,14 @@ def get_current_hint() -> str | None:
     Not a model tool — server.py calls this directly so the frontend can
     render a hint alongside the question without spending an extra API call."""
     return current_question["hint"] if current_question else None
+
+
+def get_current_choices() -> list | None:
+    """Return the multiple-choice options for the currently active flashcard
+    question, or None if the quiz isn't in multiple-choice mode (or there's
+    no active question). Not a model tool — same side-channel as
+    get_current_hint, so the frontend can render answer buttons."""
+    return current_question.get("choices") if current_question else None
 
 
 # Map each tool's name (as Gemini will refer to it) to the function that runs it.
@@ -266,6 +318,10 @@ TOOL_DECLARATIONS = [
                     "type": "string",
                     "enum": list(DIFFICULTIES),
                     "description": "Difficulty tier to draw from. Default to 'easy' unless the user names a tier (e.g. 'quiz me on hard bugs questions').",
+                },
+                "multiple_choice": {
+                    "type": "boolean",
+                    "description": "Set true if the user wants multiple-choice options instead of typing a free-text answer (e.g. they say 'multiple choice' or 'give me options'). Default false.",
                 },
             },
             "required": ["topic"],
@@ -355,6 +411,16 @@ def _rate_limit_wait_seconds(exc: Exception, attempt: int) -> float:
     return fallback_schedule[min(attempt - 1, len(fallback_schedule) - 1)]
 
 
+def _format_choices(choices: list | None) -> str:
+    """Render multiple-choice options as a lettered list, prefixed with a
+    blank line — empty string (no-op) when there are no choices."""
+    if not choices:
+        return ""
+    letters = "ABCD"
+    lines = "\n".join(f"{letters[i]}) {choice}" for i, choice in enumerate(choices))
+    return f"\n\n{lines}"
+
+
 def _format_tool_reply(call_name: str, result: dict):
     """Render a tool result as the user-facing reply directly, instead of
     spending a whole extra API call just to have the model restate the same
@@ -367,6 +433,7 @@ def _format_tool_reply(call_name: str, result: dict):
         return (
             f"**Question {result['question_num']} of {result['num_questions']} "
             f"({result['difficulty']}):**\n\n{result['question']}"
+            f"{_format_choices(result.get('choices'))}"
         )
 
     if call_name == "check_answer_and_next":
@@ -383,6 +450,7 @@ def _format_tool_reply(call_name: str, result: dict):
             f"{result['feedback']}\n\n"
             f"**Question {result['question_num']} of {result['num_questions']} "
             f"({result['difficulty']}):**\n\n{result['next_question']}"
+            f"{_format_choices(result.get('choices'))}"
         )
 
     if call_name == "get_score":

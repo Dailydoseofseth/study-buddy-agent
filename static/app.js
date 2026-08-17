@@ -9,6 +9,7 @@
   var messageInput = document.getElementById("message-input");
   var sendButton = document.getElementById("send-button");
   var scoreDisplay = document.getElementById("score-display");
+  var mcToggle = document.getElementById("mc-toggle");
 
   /**
    * Convert **bold** markdown and literal newlines into safe HTML.
@@ -47,7 +48,7 @@
     scrollToBottom();
   }
 
-  function appendAgentMessage(text, hint) {
+  function appendAgentMessage(text, hint, choices) {
     var row = document.createElement("div");
     row.className = "message agent";
 
@@ -63,9 +64,36 @@
       wrap.appendChild(buildHintToggle(hint));
     }
 
+    if (choices && choices.length) {
+      wrap.appendChild(buildChoiceButtons(choices));
+    }
+
     row.appendChild(wrap);
     chatLog.appendChild(row);
     scrollToBottom();
+  }
+
+  function buildChoiceButtons(choices) {
+    var letters = "ABCD";
+    var group = document.createElement("div");
+    group.className = "choice-group";
+
+    choices.forEach(function (choice, i) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "choice-btn";
+      btn.textContent = letters[i] + ") " + choice;
+      btn.addEventListener("click", function () {
+        var buttons = group.querySelectorAll(".choice-btn");
+        for (var j = 0; j < buttons.length; j++) {
+          buttons[j].disabled = true;
+        }
+        sendMessage(choice);
+      });
+      group.appendChild(btn);
+    });
+
+    return group;
   }
 
   function buildHintToggle(hint) {
@@ -140,8 +168,8 @@
     messageInput.disabled = isSending;
   }
 
-  function sendMessage(text) {
-    appendUserMessage(text);
+  function sendMessage(displayText, apiText) {
+    appendUserMessage(displayText);
     messageInput.value = "";
     setSending(true);
     showLoadingIndicator();
@@ -149,7 +177,7 @@
     fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: text })
+      body: JSON.stringify({ message: apiText || displayText })
     })
       .then(function (response) {
         return response
@@ -165,7 +193,7 @@
       .then(function (result) {
         removeLoadingIndicator();
         if (result.ok && result.data && typeof result.data.reply === "string") {
-          appendAgentMessage(result.data.reply, result.data.hint);
+          appendAgentMessage(result.data.reply, result.data.hint, result.data.choices);
           updateScore(result.data.score);
         } else {
           var errMsg =
@@ -190,7 +218,8 @@
     if (!text) {
       return;
     }
-    sendMessage(text);
+    var apiText = mcToggle && mcToggle.checked ? text + " (multiple choice with 4 options)" : text;
+    sendMessage(text, apiText);
   });
 
   // Initial state.
