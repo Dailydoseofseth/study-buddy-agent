@@ -87,6 +87,10 @@ DIFFICULTIES = ("easy", "medium", "hard")
 # process keeps running (a plain global dict the tool functions update).
 score = {"correct": 0, "incorrect": 0}
 
+# Per-topic correct/incorrect counts, used to auto-pick a difficulty tier
+# (see _suggest_difficulty) when the user starts a quiz without naming one.
+topic_stats = {}
+
 # Per-topic shuffled draw piles, so a quiz session works through every card
 # in a topic before any repeat. Refilled and reshuffled once exhausted.
 _draw_piles = {}
@@ -153,7 +157,23 @@ def _draw_next_card(topic_key: str, difficulty: str, multiple_choice: bool = Fal
     return card["question"]
 
 
-def get_flashcard(topic: str, num_questions: int = 3, difficulty: str = "easy", multiple_choice: bool = False) -> dict:
+def _suggest_difficulty(topic_key: str) -> str:
+    """Auto-pick a tier from the user's accuracy in this topic so far: stay
+    on easy until there's enough of a track record (3 attempts), then scale
+    up for strong accuracy and back down for a weak one."""
+    stats = topic_stats.get(topic_key, {"correct": 0, "incorrect": 0})
+    attempts = stats["correct"] + stats["incorrect"]
+    if attempts < 3:
+        return "easy"
+    accuracy = stats["correct"] / attempts
+    if accuracy >= 0.8:
+        return "hard"
+    if accuracy >= 0.5:
+        return "medium"
+    return "easy"
+
+
+def get_flashcard(topic: str, num_questions: int = 3, difficulty: str = None, multiple_choice: bool = False) -> dict:
     """Start a quiz on the given topic by returning its first question (no answer).
     Only call this to START a topic — after grading an answer, check_answer_and_next
     already returns the next question, so don't call this again mid-quiz."""
@@ -161,9 +181,12 @@ def get_flashcard(topic: str, num_questions: int = 3, difficulty: str = "easy", 
     if topic_key not in FLASHCARDS:
         return {"error": f"No flashcards for '{topic}'. Try: {', '.join(FLASHCARDS)}."}
 
-    difficulty_key = (difficulty or "easy").strip().lower()
-    if difficulty_key not in DIFFICULTIES:
-        return {"error": f"'{difficulty}' isn't a difficulty tier. Try: {', '.join(DIFFICULTIES)}."}
+    if difficulty:
+        difficulty_key = difficulty.strip().lower()
+        if difficulty_key not in DIFFICULTIES:
+            return {"error": f"'{difficulty}' isn't a difficulty tier. Try: {', '.join(DIFFICULTIES)}."}
+    else:
+        difficulty_key = _suggest_difficulty(topic_key)
 
     quiz_state["num_questions"] = max(1, num_questions)
     quiz_state["question_num"] = 1
@@ -233,10 +256,13 @@ def check_answer_and_next(user_answer: str) -> dict:
     user_answer = _resolve_choice_letter(user_answer, current_question.get("choices"))
     is_correct = _is_close_enough(user_answer, correct_answer)
     last_answer_correct = is_correct
+    topic_tally = topic_stats.setdefault(topic_key, {"correct": 0, "incorrect": 0})
     if is_correct:
         score["correct"] += 1
+        topic_tally["correct"] += 1
     else:
         score["incorrect"] += 1
+        topic_tally["incorrect"] += 1
 
     result = {
         "correct": is_correct,
@@ -333,7 +359,7 @@ TOOL_DECLARATIONS = [
                 "difficulty": {
                     "type": "string",
                     "enum": list(DIFFICULTIES),
-                    "description": "Difficulty tier to draw from. Default to 'easy' unless the user names a tier (e.g. 'quiz me on hard bugs questions').",
+                    "description": "Difficulty tier to draw from. Only pass this if the user names a tier themselves (e.g. 'quiz me on hard bugs questions'). Otherwise omit it entirely — the app auto-picks a tier based on the user's accuracy in this topic so far.",
                 },
                 "multiple_choice": {
                     "type": "boolean",
