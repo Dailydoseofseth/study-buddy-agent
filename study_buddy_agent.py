@@ -25,29 +25,63 @@ MODEL = "gemini-3.6-flash"
 # 1. TOOLS — the actions this agent is allowed to take.
 # ---------------------------------------------------------------------------
 
+# Each topic is split into easy/medium/hard tiers. get_flashcard defaults to
+# "easy" when the user doesn't ask for a tier by name.
 FLASHCARDS = {
-    "js syntax": [
-        {"question": "What keyword declares a block-scoped variable that can be reassigned?", "answer": "let", "hint": "Reassignable, block-scoped — introduced in ES6 alongside const."},
-        {"question": "What keyword declares a variable that cannot be reassigned?", "answer": "const", "hint": "Block-scoped like let, but the binding can't be reassigned."},
-        {"question": "What array method creates a new array by transforming every element?", "answer": "map", "hint": "Returns a brand-new array — the original is left untouched."},
-        {"question": "What operator checks equality without type coercion?", "answer": "===", "hint": "Compares both value and type — no coercion allowed."},
-        {"question": "What symbol wraps a template literal string?", "answer": "`", "hint": "Lets you embed ${expressions} directly inside a string."},
-    ],
-    "bugs": [
-        {"question": "How many legs does an insect have?", "answer": "6", "hint": "Count the legs on a housefly or an ant — that's the number."},
-        {"question": "What is the largest order of insects, containing beetles?", "answer": "Coleoptera", "hint": "This order includes ladybugs and fireflies — both beetles."},
-        {"question": "What do you call a butterfly in its larval stage?", "answer": "caterpillar", "hint": "This is what a butterfly looks like before it grows wings."},
-        {"question": "What is the scientific study of insects called?", "answer": "entomology", "hint": "The prefix 'ento-' comes from Greek for 'insect'."},
-        {"question": "How many wings does a typical housefly have?", "answer": "2", "hint": "Flies belong to the order Diptera — 'di-' means two."},
-    ],
-    "debugs": [
-        {"question": "What is the common term for pausing code execution at a specific line to inspect state?", "answer": "breakpoint", "hint": "You set this in your IDE to pause execution mid-run."},
-        {"question": "What tool lets you step through code line-by-line to inspect variables?", "answer": "debugger", "hint": "Chrome DevTools has a panel named exactly this."},
-        {"question": "What do you call an error that occurs while the program is running, not at compile time?", "answer": "runtime error", "hint": "Contrast this with a 'syntax error', which happens before the code even runs."},
-        {"question": "What is the process of finding and fixing bugs in code called?", "answer": "debugging", "hint": "It's literally the '-ing' form of removing bugs from code."},
-        {"question": "What browser feature lets you inspect the DOM and console errors?", "answer": "DevTools", "hint": "Right-click any webpage and choose 'Inspect' to open this."},
-    ],
+    "js syntax": {
+        "easy": [
+            {"question": "What keyword declares a block-scoped variable that can be reassigned?", "answer": "let", "hint": "Reassignable, block-scoped — introduced in ES6 alongside const."},
+            {"question": "What keyword declares a variable that cannot be reassigned?", "answer": "const", "hint": "Block-scoped like let, but the binding can't be reassigned."},
+            {"question": "What operator returns a string naming a value's type?", "answer": "typeof", "hint": "Try it in a console: typeof 42 tells you the type as a string."},
+        ],
+        "medium": [
+            {"question": "What array method creates a new array by transforming every element?", "answer": "map", "hint": "Returns a brand-new array — the original is left untouched."},
+            {"question": "What operator checks equality without type coercion?", "answer": "===", "hint": "Compares both value and type — no coercion allowed."},
+            {"question": "What array method returns a new array containing only elements that pass a test?", "answer": "filter", "hint": "Pairs naturally with map — this one removes, map transforms."},
+        ],
+        "hard": [
+            {"question": "What symbol wraps a template literal string?", "answer": "`", "hint": "Lets you embed ${expressions} directly inside a string."},
+            {"question": "What do you call a function that remembers variables from its enclosing scope even after that scope has finished executing?", "answer": "closure", "hint": "This is why a counter function can keep incrementing a private variable between calls."},
+            {"question": "What JavaScript behavior moves variable and function declarations to the top of their scope before code runs?", "answer": "hoisting", "hint": "This is why you can call a function before its declaration appears in the file."},
+        ],
+    },
+    "bugs": {
+        "easy": [
+            {"question": "How many legs does an insect have?", "answer": "6", "hint": "Count the legs on a housefly or an ant — that's the number."},
+            {"question": "How many wings does a typical housefly have?", "answer": "2", "hint": "Flies belong to the order Diptera — 'di-' means two."},
+            {"question": "What do you call a butterfly in its larval stage?", "answer": "caterpillar", "hint": "This is what a butterfly looks like before it grows wings."},
+        ],
+        "medium": [
+            {"question": "What is the largest order of insects, containing beetles?", "answer": "Coleoptera", "hint": "This order includes ladybugs and fireflies — both beetles."},
+            {"question": "What is the term for the transformation an insect undergoes from larva to adult?", "answer": "metamorphosis", "hint": "Butterflies undergo a 'complete' one; grasshoppers undergo an 'incomplete' one."},
+            {"question": "What is the hard external covering that supports and protects an insect's body called?", "answer": "exoskeleton", "hint": "Insects wear their support structure on the outside, not the inside."},
+        ],
+        "hard": [
+            {"question": "What is the scientific study of insects called?", "answer": "entomology", "hint": "The prefix 'ento-' comes from Greek for 'insect'."},
+            {"question": "What is the scientific order name for butterflies and moths?", "answer": "Lepidoptera", "hint": "This Greek-derived name literally means 'scale wing'."},
+            {"question": "What is the middle body segment of an insect called, the one bearing legs and wings?", "answer": "thorax", "hint": "An insect's body has 3 segments: head, this one, and the abdomen."},
+        ],
+    },
+    "debugs": {
+        "easy": [
+            {"question": "What is the common term for pausing code execution at a specific line to inspect state?", "answer": "breakpoint", "hint": "You set this in your IDE to pause execution mid-run."},
+            {"question": "What tool lets you step through code line-by-line to inspect variables?", "answer": "debugger", "hint": "Chrome DevTools has a panel named exactly this."},
+            {"question": "What is the process of finding and fixing bugs in code called?", "answer": "debugging", "hint": "It's literally the '-ing' form of removing bugs from code."},
+        ],
+        "medium": [
+            {"question": "What do you call an error that occurs while the program is running, not at compile time?", "answer": "runtime error", "hint": "Contrast this with a 'syntax error', which happens before the code even runs."},
+            {"question": "What browser feature lets you inspect the DOM and console errors?", "answer": "DevTools", "hint": "Right-click any webpage and choose 'Inspect' to open this."},
+            {"question": "What do you call the ordered list of function calls shown when an error is thrown, tracing back to where it started?", "answer": "stack trace", "hint": "This is what gets printed below an uncaught exception in the console."},
+        ],
+        "hard": [
+            {"question": "What term describes a bug that disappears or changes behavior when you try to observe it, like adding a console.log makes it go away?", "answer": "heisenbug", "hint": "Named after the physicist behind the uncertainty principle — observing it changes it."},
+            {"question": "What is the term for a bug caused by incorrect assumptions about the order of asynchronous operations?", "answer": "race condition", "hint": "Two async calls updating the same variable can produce different results depending on which finishes first."},
+            {"question": "What is the general term for a bug that only occurs intermittently, making it hard to reproduce consistently?", "answer": "flaky", "hint": "Testers use this word for a test that passes sometimes and fails other times with no code changes."},
+        ],
+    },
 }
+
+DIFFICULTIES = ("easy", "medium", "hard")
 
 # Stretch goal: score persists across the conversation for as long as this
 # process keeps running (a plain global dict the tool functions update).
@@ -75,22 +109,23 @@ current_question = None
 quiz_state = {"num_questions": 0, "question_num": 0, "start_correct": 0, "start_incorrect": 0}
 
 
-def _draw_next_card(topic_key: str) -> str:
-    """Pop the next card off the topic's shuffled draw pile (reshuffling a
-    fresh one if empty) and record it as the current question."""
+def _draw_next_card(topic_key: str, difficulty: str) -> str:
+    """Pop the next card off the topic+difficulty's shuffled draw pile
+    (reshuffling a fresh one if empty) and record it as the current question."""
     global current_question
-    pile = _draw_piles.get(topic_key)
+    pile_key = f"{topic_key}:{difficulty}"
+    pile = _draw_piles.get(pile_key)
     if not pile:
-        pile = list(FLASHCARDS[topic_key])
+        pile = list(FLASHCARDS[topic_key][difficulty])
         random.shuffle(pile)
-        _draw_piles[topic_key] = pile
+        _draw_piles[pile_key] = pile
 
     card = pile.pop()
-    current_question = {**card, "topic": topic_key}
+    current_question = {**card, "topic": topic_key, "difficulty": difficulty}
     return card["question"]
 
 
-def get_flashcard(topic: str, num_questions: int = 3) -> dict:
+def get_flashcard(topic: str, num_questions: int = 3, difficulty: str = "easy") -> dict:
     """Start a quiz on the given topic by returning its first question (no answer).
     Only call this to START a topic — after grading an answer, check_answer_and_next
     already returns the next question, so don't call this again mid-quiz."""
@@ -98,14 +133,19 @@ def get_flashcard(topic: str, num_questions: int = 3) -> dict:
     if topic_key not in FLASHCARDS:
         return {"error": f"No flashcards for '{topic}'. Try: {', '.join(FLASHCARDS)}."}
 
+    difficulty_key = (difficulty or "easy").strip().lower()
+    if difficulty_key not in DIFFICULTIES:
+        return {"error": f"'{difficulty}' isn't a difficulty tier. Try: {', '.join(DIFFICULTIES)}."}
+
     quiz_state["num_questions"] = max(1, num_questions)
     quiz_state["question_num"] = 1
     quiz_state["start_correct"] = score["correct"]
     quiz_state["start_incorrect"] = score["incorrect"]
     return {
-        "question": _draw_next_card(topic_key),
+        "question": _draw_next_card(topic_key, difficulty_key),
         "question_num": quiz_state["question_num"],
         "num_questions": quiz_state["num_questions"],
+        "difficulty": difficulty_key,
     }
 
 
@@ -143,6 +183,7 @@ def check_answer_and_next(user_answer: str) -> dict:
 
     correct_answer = current_question["answer"]
     topic_key = current_question["topic"]
+    difficulty_key = current_question["difficulty"]
     is_correct = _is_close_enough(user_answer, correct_answer)
     if is_correct:
         score["correct"] += 1
@@ -170,9 +211,10 @@ def check_answer_and_next(user_answer: str) -> dict:
         }
         current_question = None
     else:
-        result["next_question"] = _draw_next_card(topic_key)
+        result["next_question"] = _draw_next_card(topic_key, difficulty_key)
         result["question_num"] = quiz_state["question_num"]
         result["num_questions"] = quiz_state["num_questions"]
+        result["difficulty"] = difficulty_key
 
     return result
 
@@ -219,6 +261,11 @@ TOOL_DECLARATIONS = [
                 "num_questions": {
                     "type": "integer",
                     "description": "How many questions the user asked for in this quiz (default 3 if they didn't say).",
+                },
+                "difficulty": {
+                    "type": "string",
+                    "enum": list(DIFFICULTIES),
+                    "description": "Difficulty tier to draw from. Default to 'easy' unless the user names a tier (e.g. 'quiz me on hard bugs questions').",
                 },
             },
             "required": ["topic"],
@@ -317,7 +364,10 @@ def _format_tool_reply(call_name: str, result: dict):
     if call_name == "get_flashcard":
         if "error" in result:
             return result["error"]
-        return f"**Question {result['question_num']} of {result['num_questions']}:**\n\n{result['question']}"
+        return (
+            f"**Question {result['question_num']} of {result['num_questions']} "
+            f"({result['difficulty']}):**\n\n{result['question']}"
+        )
 
     if call_name == "check_answer_and_next":
         if "error" in result:
@@ -331,7 +381,8 @@ def _format_tool_reply(call_name: str, result: dict):
             )
         return (
             f"{result['feedback']}\n\n"
-            f"**Question {result['question_num']} of {result['num_questions']}:**\n\n{result['next_question']}"
+            f"**Question {result['question_num']} of {result['num_questions']} "
+            f"({result['difficulty']}):**\n\n{result['next_question']}"
         )
 
     if call_name == "get_score":
