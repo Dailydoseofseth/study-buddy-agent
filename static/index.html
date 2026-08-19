@@ -49,10 +49,11 @@
   </div>
 
   <script>
-    // Set to the deployed Render backend's URL in production (e.g.
-    // "https://study-buddy-agent-api.onrender.com"). Leave empty for local
-    // dev, where Flask serves this page and /api/chat from the same origin.
-    window.API_BASE = "";
+    // Same-origin ("") when Flask serves this page directly (local dev);
+    // the deployed Render API when served from Netlify (production), since
+    // Netlify only hosts the static frontend, not the Python backend.
+    var isLocalDev = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+    window.API_BASE = isLocalDev ? "" : "https://study-buddy-agent-api.onrender.com";
   </script>
   <script src="/app.js" defer></script>
 </body>
