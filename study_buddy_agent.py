@@ -13,7 +13,9 @@ import re
 import sqlite3
 import time
 from collections import deque
+from contextlib import contextmanager
 
+import psycopg2
 from dotenv import load_dotenv
 from google import genai
 
@@ -161,60 +163,92 @@ DIFFICULTIES = ("easy", "medium", "hard")
 # Special topic keys that draw from every real topic combined, instead of one deck.
 MIXED_TOPIC_KEYS = ("mixed", "all")
 
-# Score, per-topic stats, and user-authored cards all persist in this SQLite
-# file, so they survive process restarts instead of resetting every time the
-# server is relaunched (a plain in-memory dict, as this used to be).
+# Score, per-topic stats, and user-authored cards all persist here, so they
+# survive process restarts instead of resetting every time the server is
+# relaunched (a plain in-memory dict, as this used to be). Uses Postgres
+# (Neon) when DATABASE_URL is set — the production case, since a hosted
+# platform's local disk is typically ephemeral across deploys/restarts — and
+# falls back to a local SQLite file for dev, where that constraint doesn't apply.
+DATABASE_URL = os.environ.get("DATABASE_URL")
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "study_buddy.db")
+_PLACEHOLDER = "%s" if DATABASE_URL else "?"
 
 
-def _get_db() -> sqlite3.Connection:
-    """Open a short-lived connection, creating tables on first use. Opening
-    fresh per call (rather than holding one connection open) sidesteps any
-    thread-safety questions and keeps this simple for an app this size."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute(
+def _get_db():
+    if DATABASE_URL:
+        return psycopg2.connect(DATABASE_URL)
+    return sqlite3.connect(DB_PATH)
+
+
+def _ensure_tables(conn) -> None:
+    cur = conn.cursor()
+    cur.execute(
         "CREATE TABLE IF NOT EXISTS score ("
         "id INTEGER PRIMARY KEY CHECK (id = 1), correct INTEGER NOT NULL, incorrect INTEGER NOT NULL)"
     )
-    conn.execute("INSERT OR IGNORE INTO score (id, correct, incorrect) VALUES (1, 0, 0)")
-    conn.execute(
+    cur.execute("INSERT INTO score (id, correct, incorrect) VALUES (1, 0, 0) ON CONFLICT (id) DO NOTHING")
+    cur.execute(
         "CREATE TABLE IF NOT EXISTS topic_stats ("
         "topic TEXT PRIMARY KEY, correct INTEGER NOT NULL, incorrect INTEGER NOT NULL)"
     )
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS custom_flashcards ("
-        "id INTEGER PRIMARY KEY AUTOINCREMENT, topic TEXT NOT NULL, difficulty TEXT NOT NULL, "
-        "question TEXT NOT NULL, answer TEXT NOT NULL, hint TEXT NOT NULL)"
-    )
+    if DATABASE_URL:
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS custom_flashcards ("
+            "id SERIAL PRIMARY KEY, topic TEXT NOT NULL, difficulty TEXT NOT NULL, "
+            "question TEXT NOT NULL, answer TEXT NOT NULL, hint TEXT NOT NULL)"
+        )
+    else:
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS custom_flashcards ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, topic TEXT NOT NULL, difficulty TEXT NOT NULL, "
+            "question TEXT NOT NULL, answer TEXT NOT NULL, hint TEXT NOT NULL)"
+        )
     conn.commit()
-    return conn
+
+
+@contextmanager
+def _db_cursor():
+    """Open a connection, ensure tables exist, yield a cursor, commit on
+    success, and always close — explicit closing matters more here than it
+    would for SQLite, since Postgres (Neon) connections are a limited resource."""
+    conn = _get_db()
+    try:
+        _ensure_tables(conn)
+        cur = conn.cursor()
+        yield cur
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _load_score() -> dict:
-    with _get_db() as conn:
-        row = conn.execute("SELECT correct, incorrect FROM score WHERE id = 1").fetchone()
+    with _db_cursor() as cur:
+        cur.execute("SELECT correct, incorrect FROM score WHERE id = 1")
+        row = cur.fetchone()
     return {"correct": row[0], "incorrect": row[1]}
 
 
 def _persist_score() -> None:
-    with _get_db() as conn:
-        conn.execute(
-            "UPDATE score SET correct = ?, incorrect = ? WHERE id = 1", (score["correct"], score["incorrect"])
+    with _db_cursor() as cur:
+        cur.execute(
+            f"UPDATE score SET correct = {_PLACEHOLDER}, incorrect = {_PLACEHOLDER} WHERE id = 1",
+            (score["correct"], score["incorrect"]),
         )
 
 
 def _load_topic_stats() -> dict:
-    with _get_db() as conn:
-        rows = conn.execute("SELECT topic, correct, incorrect FROM topic_stats").fetchall()
+    with _db_cursor() as cur:
+        cur.execute("SELECT topic, correct, incorrect FROM topic_stats")
+        rows = cur.fetchall()
     return {topic: {"correct": c, "incorrect": i} for topic, c, i in rows}
 
 
 def _persist_topic_stat(topic_key: str) -> None:
     tally = topic_stats[topic_key]
-    with _get_db() as conn:
-        conn.execute(
-            "INSERT INTO topic_stats (topic, correct, incorrect) VALUES (?, ?, ?) "
-            "ON CONFLICT(topic) DO UPDATE SET correct = excluded.correct, incorrect = excluded.incorrect",
+    with _db_cursor() as cur:
+        cur.execute(
+            f"INSERT INTO topic_stats (topic, correct, incorrect) VALUES ({_PLACEHOLDER}, {_PLACEHOLDER}, {_PLACEHOLDER}) "
+            "ON CONFLICT (topic) DO UPDATE SET correct = excluded.correct, incorrect = excluded.incorrect",
             (topic_key, tally["correct"], tally["incorrect"]),
         )
 
@@ -222,17 +256,19 @@ def _persist_topic_stat(topic_key: str) -> None:
 def _load_custom_cards() -> None:
     """Merge user-authored cards from the DB into FLASHCARDS at import time,
     so they're indistinguishable from the built-in deck once loaded."""
-    with _get_db() as conn:
-        rows = conn.execute("SELECT topic, difficulty, question, answer, hint FROM custom_flashcards").fetchall()
+    with _db_cursor() as cur:
+        cur.execute("SELECT topic, difficulty, question, answer, hint FROM custom_flashcards")
+        rows = cur.fetchall()
     for topic_key, difficulty_key, question, answer, hint in rows:
         deck = FLASHCARDS.setdefault(topic_key, {tier: [] for tier in DIFFICULTIES})
         deck.setdefault(difficulty_key, []).append({"question": question, "answer": answer, "hint": hint})
 
 
 def _persist_custom_card(topic_key: str, difficulty_key: str, card: dict) -> None:
-    with _get_db() as conn:
-        conn.execute(
-            "INSERT INTO custom_flashcards (topic, difficulty, question, answer, hint) VALUES (?, ?, ?, ?, ?)",
+    with _db_cursor() as cur:
+        cur.execute(
+            f"INSERT INTO custom_flashcards (topic, difficulty, question, answer, hint) "
+            f"VALUES ({_PLACEHOLDER}, {_PLACEHOLDER}, {_PLACEHOLDER}, {_PLACEHOLDER}, {_PLACEHOLDER})",
             (topic_key, difficulty_key, card["question"], card["answer"], card["hint"]),
         )
 

@@ -4,6 +4,12 @@
 (function () {
   "use strict";
 
+  // Set on window by index.html for the production split-host deployment
+  // (Netlify frontend + Render backend, different origins). Empty/unset in
+  // local dev, where Flask serves this file same-origin and a relative
+  // "/api/chat" already resolves correctly.
+  var API_BASE = window.API_BASE || "";
+
   var chatLog = document.getElementById("chat-log");
   var inputRow = document.getElementById("input-row");
   var messageInput = document.getElementById("message-input");
@@ -261,7 +267,7 @@
     setSending(true);
     showLoadingIndicator();
 
-    fetch("/api/chat", {
+    fetch(API_BASE + "/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: apiText || displayText })

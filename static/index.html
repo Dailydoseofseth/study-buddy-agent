@@ -48,6 +48,12 @@
     </form>
   </div>
 
+  <script>
+    // Set to the deployed Render backend's URL in production (e.g.
+    // "https://study-buddy-agent-api.onrender.com"). Leave empty for local
+    // dev, where Flask serves this page and /api/chat from the same origin.
+    window.API_BASE = "";
+  </script>
   <script src="/app.js" defer></script>
 </body>
 </html>

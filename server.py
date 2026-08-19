@@ -13,6 +13,7 @@ model) — no per-browser-session state, cookies, or multi-user support.
 import os
 
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from google import genai
 
 from study_buddy_agent import (
@@ -26,6 +27,14 @@ from study_buddy_agent import (
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 
+# FRONTEND_ORIGIN is the deployed Netlify URL (comma-separated if there's more
+# than one, e.g. a preview + production domain). Unset in local dev, where the
+# frontend is served same-origin by this same Flask process and CORS doesn't
+# apply at all.
+_frontend_origins = [o.strip() for o in os.environ.get("FRONTEND_ORIGIN", "").split(",") if o.strip()]
+if _frontend_origins:
+    CORS(app, resources={r"/api/*": {"origins": _frontend_origins}})
+
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 history = []
 
@@ -33,6 +42,11 @@ history = []
 @app.route("/")
 def index():
     return app.send_static_file("index.html")
+
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
 
 
 @app.route("/api/chat", methods=["POST"])
@@ -60,4 +74,6 @@ def chat():
 
 
 if __name__ == "__main__":
-    app.run(port=5000, debug=True)
+    # Local dev only — Render runs this via gunicorn instead (see Procfile),
+    # which is why debug/reload behavior lives here and nowhere else.
+    app.run(port=int(os.environ.get("PORT", 5000)), debug=True)
